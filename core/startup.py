@@ -7,6 +7,7 @@ a full health sweep.
 
 import os
 import sys
+import atexit
 import logging
 from typing import Tuple, List, Dict
 
@@ -90,6 +91,11 @@ def run_startup() -> Tuple[bool, Dict[str, str], List[str]]:
     # Run health probes
     monitor = HealthMonitor()
     statuses = monitor.run_all()
+
+    # Register graceful shutdown for Neo4j driver
+    from core.graph_store import close_driver
+
+    atexit.register(close_driver)
 
     logger.info("Startup complete.  Health: %s", statuses)
     return True, statuses, warnings

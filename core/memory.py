@@ -7,6 +7,7 @@ never crashes the app — the agent simply answers without personalisation.
 
 import os
 import logging
+import threading
 from typing import List, Optional
 
 from mem0 import MemoryClient
@@ -24,6 +25,7 @@ _cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 # ---------------------------------------------------------------------------
 
 _client: Optional[MemoryClient] = None
+_client_lock = threading.Lock()
 
 
 def _get_client() -> Optional[MemoryClient]:
@@ -35,19 +37,22 @@ def _get_client() -> Optional[MemoryClient]:
     global _client
     if _client is not None:
         return _client
+    with _client_lock:
+        if _client is not None:
+            return _client
 
-    api_key = os.getenv("MEM0_API_KEY")
-    if not api_key:
-        logger.warning("MEM0_API_KEY not set — memory features disabled.")
-        return None
+        api_key = os.getenv("MEM0_API_KEY")
+        if not api_key:
+            logger.warning("MEM0_API_KEY not set — memory features disabled.")
+            return None
 
-    try:
-        _client = MemoryClient(api_key=api_key)
-        logger.info("Mem0 cloud client initialised.")
-        return _client
-    except Exception as exc:
-        logger.error("Failed to create Mem0 client: %s", exc)
-        return None
+        try:
+            _client = MemoryClient(api_key=api_key)
+            logger.info("Mem0 cloud client initialised.")
+            return _client
+        except Exception as exc:
+            logger.error("Failed to create Mem0 client: %s", exc)
+            return None
 
 
 # ---------------------------------------------------------------------------

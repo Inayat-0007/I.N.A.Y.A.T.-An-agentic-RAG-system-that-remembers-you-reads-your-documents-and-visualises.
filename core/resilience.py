@@ -5,6 +5,7 @@ so that a single service outage never crashes the Streamlit app.
 """
 
 import time
+import threading
 import logging
 import functools
 from typing import Callable, TypeVar, Any, Optional
@@ -54,38 +55,56 @@ class CircuitBreaker:
         self._state: str = self.CLOSED
         self._last_failure_time: float = 0.0
         self.forced_open: bool = False
+        self._lock = threading.Lock()
+        self._half_open_probing: bool = False
 
     @property
     def state(self) -> str:
         """Return current state, auto-transitioning OPEN → HALF_OPEN if timeout elapsed."""
-        if getattr(self, "forced_open", False):
-            return self.OPEN
-        if self._state == self.OPEN:
-            if time.time() - self._last_failure_time >= self.recovery_timeout:
-                self._state = self.HALF_OPEN
-        return self._state
+        with self._lock:
+            if getattr(self, "forced_open", False):
+                return self.OPEN
+            if self._state == self.OPEN:
+                if time.time() - self._last_failure_time >= self.recovery_timeout:
+                    self._state = self.HALF_OPEN
+            return self._state
 
     def record_success(self) -> None:
         """Reset the breaker on a successful call."""
-        self._failure_count = 0
-        self._state = self.CLOSED
+        with self._lock:
+            self._failure_count = 0
+            self._state = self.CLOSED
+            self._half_open_probing = False
 
     def record_failure(self) -> None:
         """Increment failure count; open the circuit if threshold exceeded."""
-        self._failure_count += 1
-        self._last_failure_time = time.time()
-        if self._failure_count >= self.failure_threshold:
-            self._state = self.OPEN
-            logger.warning(
-                "Circuit breaker OPENED after %d consecutive failures.",
-                self._failure_count,
-            )
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            self._half_open_probing = False
+            if self._failure_count >= self.failure_threshold:
+                self._state = self.OPEN
+                logger.warning(
+                    "Circuit breaker OPENED after %d consecutive failures.",
+                    self._failure_count,
+                )
 
     def allow_request(self) -> bool:
         """Return True when the request should proceed."""
-        if getattr(self, "forced_open", False):
-            return False
-        return self.state != self.OPEN
+        with self._lock:
+            if getattr(self, "forced_open", False):
+                return False
+            if self._state == self.OPEN:
+                if time.time() - self._last_failure_time >= self.recovery_timeout:
+                    self._state = self.HALF_OPEN
+                else:
+                    return False
+            if self._state == self.HALF_OPEN:
+                if self._half_open_probing:
+                    return False
+                self._half_open_probing = True
+                return True
+            return True
 
 
 # ---------------------------------------------------------------------------

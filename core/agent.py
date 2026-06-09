@@ -11,6 +11,7 @@ Graceful degradation:
 
 import os
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,7 @@ _DOC_ROOT = os.path.join(
 
 # Dictionary cache for user-specific indices
 _indices: dict = {}
+_indices_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +115,13 @@ def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     Returns:
         The ``PropertyGraphIndex``, or ``None`` when unavailable.
     """
-    if user_id not in _indices or _indices[user_id] is None:
+    if user_id in _indices and _indices[user_id] is not None:
+        return _indices[user_id]
+    with _indices_lock:
+        if user_id in _indices and _indices[user_id] is not None:
+            return _indices[user_id]
         _indices[user_id] = build_index(user_id)
-    return _indices[user_id]
+        return _indices[user_id]
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ resilient ``run_cypher`` helper.  Also provides the
 
 import os
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 
 from neo4j import GraphDatabase, Driver
@@ -18,6 +19,7 @@ from core.resilience import safe_execute, resilient_call, CircuitBreaker
 logger = logging.getLogger("inayat")
 
 _driver: Optional[Driver] = None
+_driver_lock = threading.Lock()
 _cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 
 
@@ -49,24 +51,28 @@ def get_driver() -> Optional[Driver]:
     global _driver
     if _driver is not None:
         return _driver
+    with _driver_lock:
+        if _driver is not None:
+            return _driver
 
-    try:
-        uri, user, pwd = _get_credentials()
-        _driver = GraphDatabase.driver(uri, auth=(user, pwd))
-        logger.info("Neo4j driver created for %s", uri)
-        return _driver
-    except Exception as exc:
-        logger.error("Neo4j driver creation failed: %s", exc)
-        return None
+        try:
+            uri, user, pwd = _get_credentials()
+            _driver = GraphDatabase.driver(uri, auth=(user, pwd))
+            logger.info("Neo4j driver created for %s", uri)
+            return _driver
+        except Exception as exc:
+            logger.error("Neo4j driver creation failed: %s", exc)
+            return None
 
 
 def close_driver() -> None:
     """Shut down the Neo4j connection pool cleanly."""
     global _driver
-    if _driver:
-        _driver.close()
-        _driver = None
-        logger.info("Neo4j driver closed.")
+    with _driver_lock:
+        if _driver:
+            _driver.close()
+            _driver = None
+            logger.info("Neo4j driver closed.")
 
 
 # ---------------------------------------------------------------------------
@@ -186,11 +192,11 @@ def get_visualization_data(user_id: str = "default") -> dict:
        OR EXISTS { MATCH (c)-[*1..2]-(s) }
        OR EXISTS { MATCH (c)-[*1..2]-(t) }
     RETURN 
-        elementId(s) AS source_id, 
+        id(s) AS source_id, 
         s.name AS source_name, 
         labels(s) AS source_labels,
         properties(s) AS source_props,
-        elementId(t) AS target_id, 
+        id(t) AS target_id, 
         t.name AS target_name, 
         labels(t) AS target_labels,
         properties(t) AS target_props,

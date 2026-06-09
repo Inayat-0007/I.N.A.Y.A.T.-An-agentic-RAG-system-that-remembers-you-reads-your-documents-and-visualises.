@@ -116,6 +116,46 @@ class TestResilience(unittest.TestCase):
         cb.record_success()
         self.assertTrue(cb.allow_request())
 
+    def test_circuit_breaker_half_open_single_probe(self) -> None:
+        """Only one probe request should pass in HALF_OPEN state."""
+        import time
+        from core.resilience import CircuitBreaker
+
+        cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0.05)
+        cb.record_failure()
+        self.assertFalse(cb.allow_request())
+        time.sleep(0.06)  # Wait for recovery timeout
+        # First probe should be allowed
+        self.assertTrue(cb.allow_request())
+        # Second concurrent probe should be blocked
+        self.assertFalse(cb.allow_request())
+        # After success, should be fully open again
+        cb.record_success()
+        self.assertTrue(cb.allow_request())
+
+    def test_circuit_breaker_thread_safety(self) -> None:
+        """Concurrent record_failure calls should not corrupt state."""
+        import threading
+        from core.resilience import CircuitBreaker
+
+        cb = CircuitBreaker(failure_threshold=100, recovery_timeout=60)
+        errors = []
+
+        def hammer():
+            try:
+                for _ in range(50):
+                    cb.record_failure()
+                    cb.allow_request()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=hammer) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len(errors), 0)
+
 
 class TestLiveServices(unittest.TestCase):
     """Integration checks — skipped when API keys are absent."""
