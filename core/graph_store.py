@@ -96,9 +96,14 @@ def run_cypher(
         return []
 
     def _run() -> List[Dict[str, Any]]:
-        with driver.session() as session:
-            result = session.run(query, parameters or {})
-            records = [dict(record) for record in result]
+        uri, user, pwd = _get_credentials()
+        is_write = any(kw in query.upper() for kw in ["CREATE", "MERGE", "SET", "DELETE", "REMOVE", "DETACH"])
+        
+        with driver.session(database=user) as session:
+            if is_write:
+                records = session.execute_write(lambda tx: [dict(r) for r in tx.run(query, parameters or {})])
+            else:
+                records = session.execute_read(lambda tx: [dict(r) for r in tx.run(query, parameters or {})])
         _cb.record_success()
         return records
 
@@ -152,7 +157,11 @@ def ping_neo4j() -> bool:
     driver = get_driver()
     if not driver:
         raise ConnectionError("No Neo4j driver available.")
+    uri, user, pwd = _get_credentials()
+    # Verify driver connectivity and database responsiveness
     driver.verify_connectivity()
+    with driver.session(database=user) as session:
+        session.run("RETURN 1").consume()
     logger.debug("Neo4j ping OK")
     return True
 
