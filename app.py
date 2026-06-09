@@ -1055,61 +1055,29 @@ def main() -> None:
             function triggerUseInChat(base64Text) {{
                 var promptText = decodeURIComponent(escape(atob(base64Text)));
                 
+                // Copy to clipboard as backup
                 navigator.clipboard.writeText(promptText).then(function() {{
-                    console.log("INAYAT: Copied to clipboard successfully.");
+                    console.log("INAYAT: Copied to clipboard.");
                 }}, function(err) {{
-                    console.error("INAYAT: Clipboard copy failed:", err);
+                    console.warn("INAYAT: Clipboard copy failed:", err);
                 }});
                 
+                // Use postMessage to communicate with parent Streamlit page
                 try {{
-                    var parentDoc = window.parent.document;
-                    var chatInput = parentDoc.querySelector('textarea[data-testid="stChatInputTextArea"]');
-                    if (chatInput) {{
-                        console.log("INAYAT: Found parent chat input.");
-                        var lastValue = chatInput.value;
-                        chatInput.value = promptText;
-                        
-                        var inputEvent = new Event('input', {{ bubbles: true }});
-                        var tracker = chatInput._valueTracker;
-                        if (tracker) {{
-                            tracker.setValue(lastValue);
-                        }}
-                        chatInput.dispatchEvent(inputEvent);
-                        
-                        setTimeout(function() {{
-                            var submitButton = parentDoc.querySelector('button[data-testid="stChatInputSubmitButton"]');
-                            if (submitButton) {{
-                                console.log("INAYAT: Clicking parent submit button.");
-                                submitButton.click();
-                            }} else {{
-                                console.log("INAYAT: Parent submit button not found, dispatching Enter.");
-                                var enterEvent = new KeyboardEvent('keydown', {{
-                                    key: 'Enter',
-                                    code: 'Enter',
-                                    keyCode: 13,
-                                    which: 13,
-                                    bubbles: true,
-                                    cancelable: true
-                                }});
-                                chatInput.dispatchEvent(enterEvent);
-                            }}
-                        }}, 150);
-                        
-                        var toast = document.getElementById('toast');
-                        toast.innerText = "Synced to Agent Chat! 💬";
-                        toast.className = 'show';
-                        setTimeout(function(){{ toast.className = toast.className.replace('show', ''); }}, 3000);
-                    }} else {{
-                        console.error("INAYAT: Parent chat input not found.");
-                        var toast = document.getElementById('toast');
-                        toast.innerText = "Synced to clipboard (Chat input not found)!";
-                        toast.className = 'show';
-                        setTimeout(function(){{ toast.className = toast.className.replace('show', ''); }}, 3000);
-                    }}
-                }} catch (e) {{
-                    console.error("INAYAT: Direct parent access failed:", e);
+                    window.parent.postMessage({{
+                        type: 'INAYAT_GRAPH_CHAT_SYNC',
+                        prompt: promptText
+                    }}, '*');
+                    console.log("INAYAT: postMessage sent to parent.");
+                    
                     var toast = document.getElementById('toast');
-                    toast.innerText = "Synced to clipboard (Parent access blocked)!";
+                    toast.innerText = "Synced to Agent Chat! 💬";
+                    toast.className = 'show';
+                    setTimeout(function(){{ toast.className = toast.className.replace('show', ''); }}, 3000);
+                }} catch (e) {{
+                    console.error("INAYAT: postMessage failed:", e);
+                    var toast = document.getElementById('toast');
+                    toast.innerText = "Copied to clipboard! Paste in chat.";
                     toast.className = 'show';
                     setTimeout(function(){{ toast.className = toast.className.replace('show', ''); }}, 3000);
                 }}
@@ -1119,6 +1087,50 @@ def main() -> None:
         </html>
         """
         st.components.v1.html(html_content, height=520)
+
+    # ── Parent-page listener for graph→chat sync via postMessage ──────
+    st.markdown(
+        """
+    <script>
+    (function() {
+        if (window._inayatListenerAttached) return;
+        window._inayatListenerAttached = true;
+        window.addEventListener('message', function(event) {
+            if (!event.data || event.data.type !== 'INAYAT_GRAPH_CHAT_SYNC') return;
+            var promptText = event.data.prompt;
+            if (!promptText) return;
+            console.log("INAYAT Parent: Received graph sync prompt:", promptText);
+            
+            var chatInput = document.querySelector('textarea[data-testid="stChatInputTextArea"]');
+            if (chatInput) {
+                // Use React's native value setter to bypass Streamlit's controlled input
+                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype, 'value'
+                ).set;
+                nativeInputValueSetter.call(chatInput, promptText);
+                chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                setTimeout(function() {
+                    var submitBtn = document.querySelector('button[data-testid="stChatInputSubmitButton"]');
+                    if (submitBtn) {
+                        submitBtn.click();
+                        console.log("INAYAT Parent: Auto-submitted graph prompt.");
+                    } else {
+                        chatInput.dispatchEvent(new KeyboardEvent('keydown', {
+                            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+                            bubbles: true, cancelable: true
+                        }));
+                    }
+                }, 200);
+            } else {
+                console.warn("INAYAT Parent: Chat input not found. User can paste from clipboard.");
+            }
+        });
+    })();
+    </script>
+    """,
+        unsafe_allow_html=True,
+    )
 
     # ── User Input Query Resolution (Executed in rerun / background) ────
     # In Streamlit's new layout, we check if there's a new query appended to state that needs processing

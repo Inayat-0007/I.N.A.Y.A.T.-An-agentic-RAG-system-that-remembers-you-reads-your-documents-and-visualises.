@@ -186,11 +186,11 @@ def get_visualization_data(user_id: str = "default") -> dict:
        OR EXISTS { MATCH (c)-[*1..2]-(s) }
        OR EXISTS { MATCH (c)-[*1..2]-(t) }
     RETURN 
-        id(s) AS source_id, 
+        elementId(s) AS source_id, 
         s.name AS source_name, 
         labels(s) AS source_labels,
         properties(s) AS source_props,
-        id(t) AS target_id, 
+        elementId(t) AS target_id, 
         t.name AS target_name, 
         labels(t) AS target_labels,
         properties(t) AS target_props,
