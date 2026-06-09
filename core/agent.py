@@ -137,13 +137,26 @@ def query(
     # ---- Attempt 1: RAG via PropertyGraphIndex ----
     index = get_index()
     if index is not None:
-        def _rag_query() -> str:
+        def _rag_query() -> Optional[str]:
             engine = index.as_query_engine(
                 include_text=True,
                 similarity_top_k=5,
             )
             response = engine.query(augmented)
-            return str(response)
+            res_str = str(response)
+            disclaimers = [
+                "does not contain",
+                "no information",
+                "don't have",
+                "not mentioned",
+                "not clear",
+                "does not mention",
+                "cannot find"
+            ]
+            if not getattr(response, "source_nodes", None) or any(d in res_str.lower() for d in disclaimers):
+                logger.info("RAG context insufficient — falling back to pure LLM.")
+                return None
+            return res_str
 
         rag_answer = safe_execute(_rag_query, fallback=None)
         if rag_answer is not None:

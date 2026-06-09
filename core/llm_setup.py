@@ -10,7 +10,7 @@ import os
 import logging
 import time
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from llama_index.core import Settings
 from llama_index.llms.google_genai import GoogleGenAI
@@ -73,6 +73,54 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
                 return await super()._aget_text_embeddings(texts)
 
 
+class ResilientGoogleGenAI(GoogleGenAI):
+    """Subclass of GoogleGenAI with exponential backoff retries and rate-limiting."""
+
+    def complete(self, prompt: str, **kwargs: Any) -> Any:
+        from tenacity import Retrying, stop_after_attempt, wait_exponential
+        for attempt in Retrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True
+        ):
+            with attempt:
+                time.sleep(0.25)
+                return super().complete(prompt, **kwargs)
+
+    async def acomplete(self, prompt: str, **kwargs: Any) -> Any:
+        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True
+        ):
+            with attempt:
+                await asyncio.sleep(0.25)
+                return await super().acomplete(prompt, **kwargs)
+
+    def chat(self, messages: List[Any], **kwargs: Any) -> Any:
+        from tenacity import Retrying, stop_after_attempt, wait_exponential
+        for attempt in Retrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True
+        ):
+            with attempt:
+                time.sleep(0.25)
+                return super().chat(messages, **kwargs)
+
+    async def achat(self, messages: List[Any], **kwargs: Any) -> Any:
+        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True
+        ):
+            with attempt:
+                await asyncio.sleep(0.25)
+                return await super().achat(messages, **kwargs)
+
+
 def _get_api_key() -> str:
     """Return the Gemini API key or raise."""
     key = os.getenv("GEMINI_API_KEY")
@@ -81,16 +129,16 @@ def _get_api_key() -> str:
     return key
 
 
-def get_gemini_llm(temperature: float = 0.25) -> GoogleGenAI:
+def get_gemini_llm(temperature: float = 0.25) -> ResilientGoogleGenAI:
     """Create a Gemini LLM instance.
 
     Args:
         temperature: Sampling temperature (0 = deterministic, 1 = creative).
 
     Returns:
-        A ``GoogleGenAI`` LLM ready for use.
+        A ``ResilientGoogleGenAI`` LLM ready for use.
     """
-    return GoogleGenAI(
+    return ResilientGoogleGenAI(
         model=_MODEL_NAME,
         api_key=_get_api_key(),
         temperature=temperature,
