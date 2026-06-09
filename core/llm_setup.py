@@ -18,8 +18,8 @@ from core.resilience import resilient_call
 
 logger = logging.getLogger("inayat")
 
-_MODEL_NAME = "gemini-1.5-flash"
-_EMBED_MODEL = "text-embedding-004"
+_MODEL_NAME = "gemini-2.5-flash"
+_EMBED_MODEL = "gemini-embedding-001"
 
 
 def _get_api_key() -> str:
