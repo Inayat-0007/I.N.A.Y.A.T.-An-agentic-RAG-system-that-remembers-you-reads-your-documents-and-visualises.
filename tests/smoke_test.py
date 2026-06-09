@@ -149,7 +149,13 @@ class TestAgentPipeline(unittest.TestCase):
         # Mock index query engine
         mock_index = MagicMock()
         mock_engine = MagicMock()
-        mock_engine.query.return_value = "Mocked RAG response about AI."
+        
+        # Create a mock response object that has source_nodes and returns the string
+        mock_response = MagicMock()
+        mock_response.source_nodes = [MagicMock()]
+        mock_response.__str__.return_value = "Mocked RAG response about AI."
+        
+        mock_engine.query.return_value = mock_response
         mock_index.as_query_engine.return_value = mock_engine
         mock_get_index.return_value = mock_index
         

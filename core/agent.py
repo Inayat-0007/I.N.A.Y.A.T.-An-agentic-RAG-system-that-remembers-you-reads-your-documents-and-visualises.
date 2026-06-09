@@ -26,26 +26,27 @@ from core.resilience import safe_execute
 
 logger = logging.getLogger("inayat")
 
-_DOC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "documents")
+_DOC_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "documents")
 
-# Module-level cache — built once, reused across Streamlit reruns
-_index: Optional[PropertyGraphIndex] = None
+# Dictionary cache for user-specific indices
+_indices: dict = {}
 
 
 # ---------------------------------------------------------------------------
 # Index lifecycle
 # ---------------------------------------------------------------------------
 
-def _has_documents() -> bool:
-    """Return True when the documents directory contains at least one file."""
-    if not os.path.isdir(_DOC_DIR):
+def _has_documents(user_id: str = "default") -> bool:
+    """Return True when the user's documents directory contains at least one file."""
+    user_dir = os.path.join(_DOC_ROOT, user_id)
+    if not os.path.isdir(user_dir):
         return False
-    files = [f for f in os.listdir(_DOC_DIR) if not f.startswith(".")]
+    files = [f for f in os.listdir(user_dir) if not f.startswith(".")]
     return len(files) > 0
 
 
-def build_index() -> Optional[PropertyGraphIndex]:
-    """Build a new PropertyGraphIndex from the documents folder.
+def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
+    """Build a new PropertyGraphIndex from the user's documents folder.
 
     Side effects:
         Calls ``configure_llama_settings()`` to ensure the global LLM and
@@ -54,7 +55,7 @@ def build_index() -> Optional[PropertyGraphIndex]:
     Returns:
         The constructed index, or ``None`` on failure.
     """
-    global _index
+    global _indices
 
     configure_llama_settings()
     graph_store = get_neo4j_property_graph_store()
@@ -62,44 +63,54 @@ def build_index() -> Optional[PropertyGraphIndex]:
         logger.warning("Neo4j graph store unavailable — cannot build index.")
         return None
 
-    if not _has_documents():
-        logger.info("No documents in %s — loading existing graph index.", _DOC_DIR)
+    user_dir = os.path.join(_DOC_ROOT, user_id)
+    os.makedirs(user_dir, exist_ok=True)
+
+    if not _has_documents(user_id):
+        logger.info("No documents in %s — loading existing graph index.", user_dir)
         try:
             _index = PropertyGraphIndex.from_existing(
                 property_graph_store=graph_store,
             )
+            _indices[user_id] = _index
             return _index
         except Exception as exc:
             logger.error("Failed to load existing index: %s", exc)
             return None
 
     try:
-        reader = SimpleDirectoryReader(_DOC_DIR)
+        reader = SimpleDirectoryReader(user_dir)
         docs = reader.load_data()
-        logger.info("Loaded %d document chunks from %s", len(docs), _DOC_DIR)
+        
+        # Attach user metadata for graph isolation
+        for doc in docs:
+            doc.metadata["user_id"] = user_id
+            
+        logger.info("Loaded %d document chunks for user %s from %s", len(docs), user_id, user_dir)
 
         _index = PropertyGraphIndex.from_documents(
             docs,
             property_graph_store=graph_store,
             show_progress=True,
         )
-        logger.info("PropertyGraphIndex built successfully.")
+        logger.info("PropertyGraphIndex built successfully for user %s.", user_id)
+        _indices[user_id] = _index
         return _index
     except Exception as exc:
         logger.error("Index build failed: %s", exc, exc_info=True)
         return None
 
 
-def get_index() -> Optional[PropertyGraphIndex]:
-    """Return the cached index, building it on first call.
+def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
+    """Return the cached index for the user, building it on first call.
 
     Returns:
         The ``PropertyGraphIndex``, or ``None`` when unavailable.
     """
-    global _index
-    if _index is None:
-        _index = build_index()
-    return _index
+    global _indices
+    if user_id not in _indices or _indices[user_id] is None:
+        _indices[user_id] = build_index(user_id)
+    return _indices[user_id]
 
 
 # ---------------------------------------------------------------------------
@@ -108,17 +119,19 @@ def get_index() -> Optional[PropertyGraphIndex]:
 
 def query(
     question: str,
+    user_id: str = "default",
     memory_context: str = "",
 ) -> str:
     """Answer a user question via RAG, with graceful fallback.
 
     Flow:
-        1. Try the PropertyGraphIndex query engine (RAG + knowledge graph).
+        1. Try the PropertyGraphIndex query engine (RAG + knowledge graph) filtered by user_id.
         2. If that fails, fall back to direct Gemini LLM chat.
         3. If *that* also fails, return an apologetic string.
 
     Args:
         question: The user's natural-language question.
+        user_id: The active user profile name.
         memory_context: Pre-formatted user memories to inject into the prompt.
 
     Returns:
@@ -135,12 +148,20 @@ def query(
         augmented = question
 
     # ---- Attempt 1: RAG via PropertyGraphIndex ----
-    index = get_index()
+    index = get_index(user_id)
     if index is not None:
         def _rag_query() -> Optional[str]:
+            from llama_index.core.vector_stores import MetadataFilters, MetadataFilter
+            
+            # Restrict vector retrieval to documents belonging to this user
+            filters = MetadataFilters(
+                filters=[MetadataFilter(key="user_id", value=user_id)]
+            )
+            
             engine = index.as_query_engine(
                 include_text=True,
                 similarity_top_k=5,
+                filters=filters,
             )
             response = engine.query(augmented)
             res_str = str(response)
