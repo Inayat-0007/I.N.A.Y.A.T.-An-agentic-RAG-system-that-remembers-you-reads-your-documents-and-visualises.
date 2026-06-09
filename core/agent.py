@@ -55,8 +55,6 @@ def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     Returns:
         The constructed index, or ``None`` on failure.
     """
-    global _indices
-
     configure_llama_settings()
     graph_store = get_neo4j_property_graph_store()
     if graph_store is None:
@@ -107,7 +105,6 @@ def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     Returns:
         The ``PropertyGraphIndex``, or ``None`` when unavailable.
     """
-    global _indices
     if user_id not in _indices or _indices[user_id] is None:
         _indices[user_id] = build_index(user_id)
     return _indices[user_id]
