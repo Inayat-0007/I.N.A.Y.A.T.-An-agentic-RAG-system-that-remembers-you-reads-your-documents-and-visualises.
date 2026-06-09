@@ -45,6 +45,14 @@ def setup_logging(
     logger.setLevel(log_level)
     formatter = logging.Formatter(_FMT, datefmt=_DATE_FMT)
 
+    # Ensure stdout/stderr don't crash on unicode characters in legacy console encodings
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
+
     # ---- Console handler ----
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(log_level)
