@@ -154,3 +154,63 @@ def ping_neo4j() -> bool:
     driver.verify_connectivity()
     logger.debug("Neo4j ping OK")
     return True
+
+
+def get_visualization_data() -> dict:
+    """Retrieve nodes and edges from Neo4j, falling back to a demo system graph on failure/empty."""
+    query_str = """
+    MATCH (s)-[r]->(t)
+    RETURN 
+        id(s) AS source_id, 
+        s.name AS source_name, 
+        labels(s) AS source_labels,
+        id(t) AS target_id, 
+        t.name AS target_name, 
+        labels(t) AS target_labels,
+        type(r) AS rel_type
+    LIMIT 100
+    """
+    records = run_cypher(query_str)
+    
+    if records:
+        nodes = {}
+        edges = []
+        for rec in records:
+            s_id = rec.get("source_id")
+            s_name = rec.get("source_name") or f"Node {s_id}"
+            s_label = rec.get("source_labels", ["Entity"])[0] if rec.get("source_labels") else "Entity"
+            
+            t_id = rec.get("target_id")
+            t_name = rec.get("target_name") or f"Node {t_id}"
+            t_label = rec.get("target_labels", ["Entity"])[0] if rec.get("target_labels") else "Entity"
+            
+            rel_type = rec.get("rel_type") or "RELATED"
+            
+            if s_id not in nodes:
+                nodes[s_id] = {"id": s_id, "label": s_name, "group": s_label}
+            if t_id not in nodes:
+                nodes[t_id] = {"id": t_id, "label": t_name, "group": t_label}
+                
+            edges.append({"from": s_id, "to": t_id, "label": rel_type})
+            
+        return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
+        
+    # Mock fallback data
+    nodes = [
+        {"id": 1, "label": "I.N.A.Y.A.T. Agent", "group": "Agent"},
+        {"id": 2, "label": "Gemini 1.5 Flash", "group": "LLM"},
+        {"id": 3, "label": "Mem0 Cloud Memory", "group": "Memory"},
+        {"id": 4, "label": "Neo4j AuraDB Graph", "group": "GraphStore"},
+        {"id": 5, "label": "Circuit Breaker", "group": "Resilience"},
+        {"id": 6, "label": "User Session Profile", "group": "User"},
+    ]
+    edges = [
+        {"from": 6, "to": 1, "label": "inputs query"},
+        {"from": 1, "to": 3, "label": "fetches memories"},
+        {"from": 1, "to": 4, "label": "queries facts"},
+        {"from": 1, "to": 2, "label": "completes prompt"},
+        {"from": 3, "to": 5, "label": "monitored by"},
+        {"from": 4, "to": 5, "label": "monitored by"},
+    ]
+    return {"nodes": nodes, "edges": edges, "is_mock": True}
+

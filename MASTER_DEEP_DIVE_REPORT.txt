@@ -1,0 +1,28 @@
+### 1. WHAT IS FULLY DONE (COMPLETED & VERIFIED)
+- Project scaffolding containing 21 files, `app.py`, `core/`, `tests/`, `warmup.py`, and documentation.
+- Python 3.14.3 virtual environment setup with `requirements.txt` and `constraints.txt`.
+- Google GenAI model integration using `GoogleGenAI` and `GoogleGenAIEmbedding` in `core/llm_setup.py`.
+- Mem0 SDK v2 parameters migration utilizing `filters={"user_id": user_id}` and `raw.get("results", [])` list extraction in `core/memory.py`.
+- Sentinel pattern error-handling to prevent empty RAG queries from tripping circuit breakers in `core/memory.py` and `core/graph_store.py`.
+- Custom `CircuitBreaker` class in `core/resilience.py` with `forced_open` attribute.
+- Interactive sidebar checkboxes in `app.py` to trigger forced failure of Mem0 and Neo4j.
+- Graceful degradation fallback routing (RAG -> direct LLM -> static apologetic string) in `core/agent.py`.
+- Startup pre-warming spinner bootstrapping the Neo4j `PropertyGraphIndex` in `app.py`.
+- Session state parameter persistence via `st.query_params` URL mapping (`?user=...`) in `app.py`.
+- Windows environment activator script `activate.ps1`.
+- Demo instructions sidebar guide in `app.py` and `demo_script.md`.
+- ASCII replacements for unicode log compatibility in `warmup.py`.
+- 17 smoke tests running and passing in `tests/smoke_test.py`.
+- Structured logging configuration in `core/logging_config.py` writing to `inayat_debug.log`.
+
+### 2. WHAT REMAINS (CRITICAL PATH TO LIVE DEMO)
+1. **Configure `.env` file**: Copy `.env.example` to `.env` and enter real credentials for `GEMINI_API_KEY`, `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`. *Blocker: Startup verification gate in `core/startup.py` blocks application launch if critical keys are missing.*
+2. **Ingest PDF documents**: Place 3–5 PDF files in the `data/documents/` directory. *Blocker: Without files, LlamaIndex PropertyGraphIndex RAG engine defaults to empty graph and falls back to pure LLM chat.*
+3. **Resume Neo4j Database**: Access the Neo4j AuraDB dashboard and ensure the database instance is in the "Running" state. *Blocker: Paused AuraDB instance prevents RAG engine connections, forcing RAG queries to fail.*
+4. **Execute Activator**: Run `powershell -ExecutionPolicy Bypass -File activate.ps1` in the project root. *Blocker: Manual terminal execution required.*
+
+### 3. WHAT IS MISSING (UNRESOLVED GAPS)
+- **Live knowledge-graph visual layout**: UI does not render node-link relationships. *Impact: Examiner cannot visually trace indexed entities from the sidebar. Verdict: Visual graph rendering is omitted; text-based source mapping is used instead.*
+- **Dynamic in-app file upload widget**: Sidebar lacks file upload mechanism. *Impact: Document ingestion requires manual placement of PDFs in the directory. Verdict: Static loading at startup is sufficient for local demonstration.*
+- **End-to-end RAG mock unit tests**: Test suite lacks mocked LLM response verification. *Impact: Code correctness relies on integration testing rather than isolated pipeline unit tests. Verdict: Present 17-test suite covers service connectivity and resilience components.*
+- **Multi-session local chat history persistence**: Chat log clears on browser tab close or hard refresh. *Impact: Examiner loses chat screen logs on reload. Verdict: Mitigated by Mem0 persistent cloud context and URL profile parameters.*

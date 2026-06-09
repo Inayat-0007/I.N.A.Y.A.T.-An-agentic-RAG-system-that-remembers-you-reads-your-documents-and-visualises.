@@ -50,10 +50,13 @@ class CircuitBreaker:
         self._failure_count: int = 0
         self._state: str = self.CLOSED
         self._last_failure_time: float = 0.0
+        self.forced_open: bool = False
 
     @property
     def state(self) -> str:
         """Return current state, auto-transitioning OPEN → HALF_OPEN if timeout elapsed."""
+        if getattr(self, "forced_open", False):
+            return self.OPEN
         if self._state == self.OPEN:
             if time.time() - self._last_failure_time >= self.recovery_timeout:
                 self._state = self.HALF_OPEN
@@ -77,6 +80,8 @@ class CircuitBreaker:
 
     def allow_request(self) -> bool:
         """Return True when the request should proceed."""
+        if getattr(self, "forced_open", False):
+            return False
         return self.state != self.OPEN
 
 

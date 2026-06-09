@@ -134,6 +134,43 @@ class TestLiveServices(unittest.TestCase):
         self.assertTrue(ping_neo4j())
 
 
+from unittest.mock import patch, MagicMock
+
+class TestAgentPipeline(unittest.TestCase):
+    """Verify agent query pipeline with mocked services."""
+
+    @patch("core.agent.get_index")
+    @patch("core.agent.get_gemini_llm")
+    def test_query_rag_success(self, mock_get_llm, mock_get_index) -> None:
+        # Mock index query engine
+        mock_index = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.query.return_value = "Mocked RAG response about AI."
+        mock_index.as_query_engine.return_value = mock_engine
+        mock_get_index.return_value = mock_index
+        
+        from core.agent import query
+        ans = query("What is AI?", memory_context="")
+        self.assertEqual(ans, "Mocked RAG response about AI.")
+        mock_engine.query.assert_called_once()
+
+    @patch("core.agent.get_index")
+    @patch("core.agent.get_gemini_llm")
+    def test_query_rag_fails_llm_fallback(self, mock_get_llm, mock_get_index) -> None:
+        # RAG fails (returns None)
+        mock_get_index.return_value = None
+        
+        # LLM completes successfully
+        mock_llm = MagicMock()
+        mock_llm.complete.return_value = "Mocked LLM fallback response."
+        mock_get_llm.return_value = mock_llm
+        
+        from core.agent import query
+        ans = query("Hello?", memory_context="")
+        self.assertEqual(ans, "Mocked LLM fallback response.")
+        mock_llm.complete.assert_called_once()
+
+
 if __name__ == "__main__":
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -142,6 +179,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestHealthMonitor))
     suite.addTests(loader.loadTestsFromTestCase(TestResilience))
     suite.addTests(loader.loadTestsFromTestCase(TestLiveServices))
+    suite.addTests(loader.loadTestsFromTestCase(TestAgentPipeline))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

@@ -135,9 +135,11 @@ section[data-testid="stSidebar"] {
 
 def _init_state() -> None:
     """Initialise all session state keys once."""
+    # Pre-populate user_id from query params if available
+    default_user = st.query_params.get("user", "")
     defaults = {
         "messages": [],
-        "user_id": "",
+        "user_id": default_user,
         "health": _health,
         "startup_warnings": _warnings,
         "startup_ok": _ok,
@@ -183,7 +185,37 @@ def _render_sidebar() -> None:
         )
         if name != st.session_state.user_id:
             st.session_state.user_id = name
+            st.query_params["user"] = name
             st.rerun()
+
+        st.markdown("---")
+
+        # Document Ingestion
+        st.markdown("##### 📂 Ingest Documents")
+        uploaded_files = st.file_uploader(
+            "Upload PDFs or TXT files",
+            type=["pdf", "txt"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+        if uploaded_files:
+            import os
+            os.makedirs("data/documents", exist_ok=True)
+            new_file_saved = False
+            for f in uploaded_files:
+                fpath = os.path.join("data/documents", f.name)
+                if not os.path.exists(fpath):
+                    with open(fpath, "wb") as out_f:
+                        out_f.write(f.getbuffer())
+                    new_file_saved = True
+                    st.success(f"Saved {f.name}")
+            
+            if new_file_saved:
+                with st.spinner("Indexing new files..."):
+                    from core.agent import build_index
+                    build_index()
+                    st.success("Graph Index updated!")
+                    st.rerun()
 
         st.markdown("---")
 
@@ -195,13 +227,42 @@ def _render_sidebar() -> None:
                 st.session_state.health = monitor.run_all()
 
         h = st.session_state.health
+        
+        # Override health display if forced failures are active
+        import core.memory as mem
+        import core.graph_store as gs
+        
+        is_mem_forced = getattr(mem._cb, "forced_open", False)
+        is_graph_forced = getattr(gs._cb, "forced_open", False)
+
         for svc, label in [("gemini", "Gemini LLM"), ("mem0", "Mem0 Memory"), ("neo4j", "Neo4j Graph")]:
             status = h.get(svc, "⚪ Unknown")
+            if svc == "mem0" and is_mem_forced:
+                status = "🔴 Forced Fail"
+            elif svc == "neo4j" and is_graph_forced:
+                status = "🔴 Forced Fail"
             st.markdown(f"<div class='status-card'>{status}&ensp;{label}</div>", unsafe_allow_html=True)
 
         # Startup warnings
         for w in st.session_state.startup_warnings:
             st.warning(w, icon="⚠️")
+
+        # Resilience Testing Panel
+        st.markdown("---")
+        st.markdown("##### 🧪 Resilience Testing")
+        
+        fail_mem0 = st.checkbox("🔥 Force Fail Mem0", value=is_mem_forced)
+        if fail_mem0 != is_mem_forced:
+            mem._cb.forced_open = fail_mem0
+            st.rerun()
+            
+        fail_neo4j = st.checkbox("🔥 Force Fail Neo4j", value=is_graph_forced)
+        if fail_neo4j != is_graph_forced:
+            gs._cb.forced_open = fail_neo4j
+            st.rerun()
+            
+        if fail_mem0 or fail_neo4j:
+            st.warning("Circuit breaker(s) forced OPEN. Systems running in degraded mode.")
 
         st.markdown("---")
 
@@ -221,6 +282,33 @@ def _render_sidebar() -> None:
             if st.button("🧹 New Chat", use_container_width=True):
                 st.session_state.messages = []
                 st.rerun()
+
+        st.markdown("---")
+        with st.expander("📜 Demo Script Guide"):
+            st.markdown("""
+**1. Welcome & Warmup**
+- Point out Service Health: all services `🟢 Connected`.
+
+**2. Memory Injection**
+- Enter name: e.g. **Rahul**
+- Say: `I am a machine learning student. I love NLP.`
+- Facts are stored in Mem0 cloud.
+
+**3. Persistence Test**
+- Hard-refresh the page (simulated browser restart).
+- The URL preserves `?user=Rahul`.
+- Ask: `What do you know about me?`
+- Agent recalls your facts from Mem0.
+
+**4. Knowledge Graph RAG**
+- Ask: `What does I.N.A.Y.A.T. use for embedding?`
+- Answer is retrieved from Neo4j AuraDB graph.
+
+**5. Graceful Failure**
+- Check `Force Fail Mem0` or `Force Fail Neo4j`.
+- Notice the service health updates.
+- Ask again: the app handles it gracefully and doesn't crash!
+            """)
 
 
 # ── Chat renderer ─────────────────────────────────────────────────────
@@ -255,6 +343,16 @@ def main() -> None:
         )
         st.stop()
 
+    # ── Pre-warm Knowledge Graph Index ────────────────────────────────
+    if "index_warmed" not in st.session_state:
+        with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
+            try:
+                from core.agent import get_index
+                get_index()
+                st.session_state.index_warmed = True
+            except Exception as e:
+                st.warning(f"Could not warm up graph store index: {e}")
+
     # ── Header ────────────────────────────────────────────────────────
     st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
     st.markdown(
@@ -269,18 +367,129 @@ def main() -> None:
         st.info("👈  Enter your name in the sidebar to begin.")
         st.stop()
 
-    # ── Memory display ────────────────────────────────────────────────
-    memories = _fetch_memories(st.session_state.user_id)
-    if memories:
-        with st.expander(f"🧠 Long-Term Memory  ({len(memories)} facts)", expanded=False):
-            pills = "".join(f"<span class='mem-pill'>{m}</span>" for m in memories)
-            st.markdown(pills, unsafe_allow_html=True)
+    # Create Tabs
+    tab1, tab2 = st.tabs(["💬 Agent Chat", "🕸️ Knowledge Graph Visualizer"])
+
+    with tab1:
+        # ── Memory display ────────────────────────────────────────────────
+        memories = _fetch_memories(st.session_state.user_id)
+        if memories:
+            with st.expander(f"🧠 Long-Term Memory  ({len(memories)} facts)", expanded=False):
+                pills = "".join(f"<span class='mem-pill'>{m}</span>" for m in memories)
+                st.markdown(pills, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── Chat history ──────────────────────────────────────────────────
+        for msg in st.session_state.messages:
+            _render_message(msg["role"], msg["content"])
+
+    with tab2:
+        st.markdown("### 🕸️ Knowledge Graph Visualizer")
+        st.markdown(
+            "This interactive canvas displays the entity-relationship paths extracted from your documents "
+            "and stored in Neo4j. If Neo4j is offline or empty, a mock graph of the I.N.A.Y.A.T. system architecture is shown."
+        )
+        
+        from core.graph_store import get_visualization_data
+        graph_data = get_visualization_data()
+        
+        nodes_js = "[" + ",".join([
+            f"{{id: {n['id']}, label: '{n['label']}', group: '{n['group']}'}}"
+            for n in graph_data["nodes"]
+        ]) + "]"
+        
+        edges_js = "[" + ",".join([
+            f"{{from: {e['from']}, to: {e['to']}, label: '{e['label']}'}}"
+            for e in graph_data["edges"]
+        ]) + "]"
+        
+        is_mock_banner = "⚠️ **Showing System Architecture Graph** (Neo4j is empty or offline)" if graph_data["is_mock"] else "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
+        st.info(is_mock_banner)
+        
+        # Generate Vis.js Network HTML
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+            <style type="text/css">
+                #mynetwork {{
+                    width: 100%;
+                    height: 500px;
+                    border: 1px solid #27272a;
+                    background-color: #0c0c14;
+                    border-radius: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+        <div id="mynetwork"></div>
+        <script type="text/javascript">
+            var nodes = new vis.DataSet({nodes_js});
+            var edges = new vis.DataSet({edges_js});
+            var container = document.getElementById('mynetwork');
+            var data = {{
+                nodes: nodes,
+                edges: edges
+            }};
+            var options = {{
+                nodes: {{
+                    shape: 'dot',
+                    size: 24,
+                    font: {{
+                        color: '#ffffff',
+                        size: 14,
+                        face: 'Inter, sans-serif'
+                    }},
+                    borderWidth: 2,
+                    shadow: true
+                }},
+                edges: {{
+                    width: 2,
+                    color: {{ color: '#818cf8', highlight: '#a78bfa' }},
+                    font: {{
+                        color: '#a5b4fc',
+                        size: 11,
+                        align: 'horizontal',
+                        background: '#0c0c14'
+                    }},
+                    arrows: {{
+                        to: {{ enabled: true, scaleFactor: 0.8 }}
+                    }},
+                    smooth: {{
+                        type: 'cubicBezier',
+                        forceDirection: 'none',
+                        roundness: 0.5
+                    }}
+                }},
+                groups: {{
+                    Agent: {{ color: {{ background: '#a78bfa', border: '#818cf8' }} }},
+                    LLM: {{ color: {{ background: '#34d399', border: '#059669' }} }},
+                    Memory: {{ color: {{ background: '#60a5fa', border: '#2563eb' }} }},
+                    GraphStore: {{ color: {{ background: '#fb7185', border: '#e11d48' }} }},
+                    Resilience: {{ color: {{ background: '#fbbf24', border: '#d97706' }} }},
+                    User: {{ color: {{ background: '#f472b6', border: '#db2777' }} }},
+                    Entity: {{ color: {{ background: '#94a3b8', border: '#475569' }} }},
+                    Chunk: {{ color: {{ background: '#475569', border: '#334155' }} }}
+                }},
+                physics: {{
+                    stabilization: true,
+                    barnesHut: {{
+                        gravitationalConstant: -2000,
+                        springConstant: 0.04,
+                        springLength: 95
+                    }}
+                }}
+            }};
+            var network = new vis.Network(container, data, options);
+        </script>
+        </body>
+        </html>
+        """
+        st.components.v1.html(html_content, height=520)
 
     st.markdown("---")
-
-    # ── Chat history ──────────────────────────────────────────────────
-    for msg in st.session_state.messages:
-        _render_message(msg["role"], msg["content"])
 
     # ── User input ────────────────────────────────────────────────────
     if prompt := st.chat_input("Ask about your documents, or tell me about yourself…"):
