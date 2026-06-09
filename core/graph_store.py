@@ -25,6 +25,7 @@ _cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 # Connection helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_credentials() -> tuple:
     """Return (uri, username, password) from env vars.
 
@@ -72,6 +73,7 @@ def close_driver() -> None:
 # Cypher query runner
 # ---------------------------------------------------------------------------
 
+
 def run_cypher(
     query: str,
     parameters: Optional[Dict[str, Any]] = None,
@@ -97,13 +99,20 @@ def run_cypher(
 
     def _run() -> List[Dict[str, Any]]:
         uri, user, pwd = _get_credentials()
-        is_write = any(kw in query.upper() for kw in ["CREATE", "MERGE", "SET", "DELETE", "REMOVE", "DETACH"])
-        
+        is_write = any(
+            kw in query.upper()
+            for kw in ["CREATE", "MERGE", "SET", "DELETE", "REMOVE", "DETACH"]
+        )
+
         with driver.session(database=user) as session:
             if is_write:
-                records = session.execute_write(lambda tx: [dict(r) for r in tx.run(query, parameters or {})])
+                records = session.execute_write(
+                    lambda tx: [dict(r) for r in tx.run(query, parameters or {})]
+                )
             else:
-                records = session.execute_read(lambda tx: [dict(r) for r in tx.run(query, parameters or {})])
+                records = session.execute_read(
+                    lambda tx: [dict(r) for r in tx.run(query, parameters or {})]
+                )
         _cb.record_success()
         return records
 
@@ -118,6 +127,7 @@ def run_cypher(
 # ---------------------------------------------------------------------------
 # LlamaIndex integration
 # ---------------------------------------------------------------------------
+
 
 def get_neo4j_property_graph_store() -> Optional[Neo4jPropertyGraphStore]:
     """Create a ``Neo4jPropertyGraphStore`` for LlamaIndex.
@@ -143,6 +153,7 @@ def get_neo4j_property_graph_store() -> Optional[Neo4jPropertyGraphStore]:
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
+
 
 @resilient_call(max_attempts=2, min_wait=1, max_wait=5)
 def ping_neo4j() -> bool:
@@ -188,11 +199,11 @@ def get_visualization_data(user_id: str = "default") -> dict:
     LIMIT 120
     """
     records = run_cypher(query_str, {"user_id": user_id})
-    
+
     if records:
         nodes = {}
         edges = []
-        
+
         def clean_props(props):
             if not props:
                 return {}
@@ -212,127 +223,165 @@ def get_visualization_data(user_id: str = "default") -> dict:
             s_name = rec.get("source_name")
             s_labels = rec.get("source_labels", ["Entity"])
             s_label = s_labels[0] if s_labels else "Entity"
-            
+
             if not s_name:
                 if s_label == "Chunk" and s_props.get("file_name"):
                     s_name = f"Chunk: {s_props.get('file_name')}"
                 else:
                     s_name = f"{s_label} ({str(s_id)[:6]})"
-            
+
             t_id = rec.get("target_id")
             t_props = clean_props(rec.get("target_props"))
             t_name = rec.get("target_name")
             t_labels = rec.get("target_labels", ["Entity"])
             t_label = t_labels[0] if t_labels else "Entity"
-            
+
             if not t_name:
                 if t_label == "Chunk" and t_props.get("file_name"):
                     t_name = f"Chunk: {t_props.get('file_name')}"
                 else:
                     t_name = f"{t_label} ({str(t_id)[:6]})"
-            
+
             rel_type = rec.get("rel_type") or "RELATED"
             rel_props = clean_props(rec.get("rel_props"))
-            
+
             if s_id not in nodes:
                 nodes[s_id] = {
-                    "id": s_id, 
-                    "label": s_name, 
-                    "group": s_label, 
+                    "id": s_id,
+                    "label": s_name,
+                    "group": s_label,
                     "properties": s_props,
-                    "title": f"<b>{s_label}</b>: {s_name}"
+                    "title": f"<b>{s_label}</b>: {s_name}",
                 }
             if t_id not in nodes:
                 nodes[t_id] = {
-                    "id": t_id, 
-                    "label": t_name, 
-                    "group": t_label, 
+                    "id": t_id,
+                    "label": t_name,
+                    "group": t_label,
                     "properties": t_props,
-                    "title": f"<b>{t_label}</b>: {t_name}"
+                    "title": f"<b>{t_label}</b>: {t_name}",
                 }
-                
-            edges.append({
-                "from": s_id, 
-                "to": t_id, 
-                "label": rel_type,
-                "properties": rel_props
-            })
-            
+
+            edges.append(
+                {"from": s_id, "to": t_id, "label": rel_type, "properties": rel_props}
+            )
+
         return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
-        
+
     # Mock fallback data customized for the active profile
     prefix = f"{user_id}'s " if user_id and user_id.lower() != "default" else ""
     nodes = [
         {
-            "id": 1, 
-            "label": f"{prefix}I.N.A.Y.A.T. Agent", 
+            "id": 1,
+            "label": f"{prefix}I.N.A.Y.A.T. Agent",
             "group": "Agent",
             "properties": {
-                "Role": f"Core Agent Coordinator for {user_id or 'User'}", 
-                "Description": "Main reasoning agent which coordinates between user profiles, long-term memory (Mem0), and property graph storage (Neo4j RAG) using Google Gemini."
-            }
+                "Role": f"Core Agent Coordinator for {user_id or 'User'}",
+                "Description": "Main reasoning agent which coordinates between user profiles, long-term memory (Mem0), and property graph storage (Neo4j RAG) using Google Gemini.",
+            },
         },
         {
-            "id": 2, 
-            "label": "Gemini 1.5 Flash", 
+            "id": 2,
+            "label": "Gemini 1.5 Flash",
             "group": "LLM",
             "properties": {
-                "Model": "gemini-3.1-flash-lite", 
-                "Role": "Generative Language Model", 
-                "Provider": "Google Gemini API via Google AI Studio", 
-                "Wrapper": "ResilientGoogleGenAI for self-healing completions."
-            }
+                "Model": "gemini-3.1-flash-lite",
+                "Role": "Generative Language Model",
+                "Provider": "Google Gemini API via Google AI Studio",
+                "Wrapper": "ResilientGoogleGenAI for self-healing completions.",
+            },
         },
         {
-            "id": 3, 
-            "label": f"{prefix}Mem0 Cloud Memory", 
+            "id": 3,
+            "label": f"{prefix}Mem0 Cloud Memory",
             "group": "Memory",
             "properties": {
-                "API": "Mem0 Cloud API", 
-                "Role": "Long-Term Persistent Memory", 
-                "Purpose": f"Saves and retrieves facts about {user_id or 'user'} preferences and history across sessions."
-            }
+                "API": "Mem0 Cloud API",
+                "Role": "Long-Term Persistent Memory",
+                "Purpose": f"Saves and retrieves facts about {user_id or 'user'} preferences and history across sessions.",
+            },
         },
         {
-            "id": 4, 
-            "label": "Neo4j AuraDB Graph", 
+            "id": 4,
+            "label": "Neo4j AuraDB Graph",
             "group": "GraphStore",
             "properties": {
-                "Store": "Neo4j AuraDB Cloud", 
-                "Role": "Property Graph Store", 
-                "Structure": f"Entity-Relationship graph index built with LlamaIndex PropertyGraphIndex from data/documents/{user_id or 'user'}."
-            }
+                "Store": "Neo4j AuraDB Cloud",
+                "Role": "Property Graph Store",
+                "Structure": f"Entity-Relationship graph index built with LlamaIndex PropertyGraphIndex from data/documents/{user_id or 'user'}.",
+            },
         },
         {
-            "id": 5, 
-            "label": "Circuit Breaker", 
+            "id": 5,
+            "label": "Circuit Breaker",
             "group": "Resilience",
             "properties": {
-                "Class": "CircuitBreaker", 
-                "Role": "Self-Healing Guard", 
-                "Status": "Closed (Normal Operations)", 
-                "Failure Threshold": "3 consecutive errors", 
-                "Recovery Time": "60 seconds"
-            }
+                "Class": "CircuitBreaker",
+                "Role": "Self-Healing Guard",
+                "Status": "Closed (Normal Operations)",
+                "Failure Threshold": "3 consecutive errors",
+                "Recovery Time": "60 seconds",
+            },
         },
         {
-            "id": 6, 
-            "label": f"{user_id or 'User'} Session Profile", 
+            "id": 6,
+            "label": f"{user_id or 'User'} Session Profile",
             "group": "User",
             "properties": {
-                "Source": "Streamlit Session State", 
-                "Role": "Active User Session Profile", 
-                "Scope": f"Tracks {user_id or 'user'} name, messages, and state parameters."
-            }
+                "Source": "Streamlit Session State",
+                "Role": "Active User Session Profile",
+                "Scope": f"Tracks {user_id or 'user'} name, messages, and state parameters.",
+            },
         },
     ]
     edges = [
-        {"from": 6, "to": 1, "label": "inputs query", "properties": {"Interaction": "Sends natural language queries and documents to the agent."}},
-        {"from": 1, "to": 3, "label": "fetches memories", "properties": {"Operation": "Extracts context-relevant memories for the active user name."}},
-        {"from": 1, "to": 4, "label": "queries facts", "properties": {"Operation": "Executes vector search and cypher queries on entities and chunks."}},
-        {"from": 1, "to": 2, "label": "completes prompt", "properties": {"Operation": "Submits final prompt constructed from user query, memories, and RAG chunks."}},
-        {"from": 3, "to": 5, "label": "monitored by", "properties": {"Mechanism": "Wraps API requests. Opens circuit if requests fail consistently."}},
-        {"from": 4, "to": 5, "label": "monitored by", "properties": {"Mechanism": "Wraps Cypher queries. Opens circuit if AuraDB goes offline."}},
+        {
+            "from": 6,
+            "to": 1,
+            "label": "inputs query",
+            "properties": {
+                "Interaction": "Sends natural language queries and documents to the agent."
+            },
+        },
+        {
+            "from": 1,
+            "to": 3,
+            "label": "fetches memories",
+            "properties": {
+                "Operation": "Extracts context-relevant memories for the active user name."
+            },
+        },
+        {
+            "from": 1,
+            "to": 4,
+            "label": "queries facts",
+            "properties": {
+                "Operation": "Executes vector search and cypher queries on entities and chunks."
+            },
+        },
+        {
+            "from": 1,
+            "to": 2,
+            "label": "completes prompt",
+            "properties": {
+                "Operation": "Submits final prompt constructed from user query, memories, and RAG chunks."
+            },
+        },
+        {
+            "from": 3,
+            "to": 5,
+            "label": "monitored by",
+            "properties": {
+                "Mechanism": "Wraps API requests. Opens circuit if requests fail consistently."
+            },
+        },
+        {
+            "from": 4,
+            "to": 5,
+            "label": "monitored by",
+            "properties": {
+                "Mechanism": "Wraps Cypher queries. Opens circuit if AuraDB goes offline."
+            },
+        },
     ]
     return {"nodes": nodes, "edges": edges, "is_mock": True}
-

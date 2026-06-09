@@ -36,30 +36,36 @@ class HealthMonitor:
     def check_gemini(self) -> str:
         """Ping Google Gemini and return a status string."""
         import os
+
         if not os.getenv("GEMINI_API_KEY"):
             return UNCONFIGURED
 
         from core.llm_setup import ping_gemini
+
         ok = safe_execute(ping_gemini, fallback=False)
         return UP if ok else DOWN
 
     def check_mem0(self) -> str:
         """Ping the Mem0 cloud API and return a status string."""
         import os
+
         if not os.getenv("MEM0_API_KEY"):
             return UNCONFIGURED
 
         from core.memory import ping_mem0
+
         ok = safe_execute(ping_mem0, fallback=False)
         return UP if ok else DOWN
 
     def check_neo4j(self) -> str:
         """Ping Neo4j AuraDB and return a status string."""
         import os
+
         if not os.getenv("NEO4J_URI") or not os.getenv("NEO4J_PASSWORD"):
             return UNCONFIGURED
 
         from core.graph_store import ping_neo4j
+
         ok = safe_execute(ping_neo4j, fallback=False)
         return UP if ok else DOWN
 

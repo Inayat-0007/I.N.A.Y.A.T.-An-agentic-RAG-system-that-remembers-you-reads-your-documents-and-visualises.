@@ -59,6 +59,7 @@ class TestEnvironment(unittest.TestCase):
 
     def test_validate_env_runs(self) -> None:
         from core.startup import validate_env
+
         ok, missing_crit, missing_rec = validate_env()
         # We don't assert ok=True because CI might not have all secrets
         self.assertIsInstance(ok, bool)
@@ -71,6 +72,7 @@ class TestHealthMonitor(unittest.TestCase):
 
     def test_instantiate(self) -> None:
         from core.health import HealthMonitor
+
         monitor = HealthMonitor()
         self.assertIn("gemini", monitor.status)
         self.assertIn("mem0", monitor.status)
@@ -82,6 +84,7 @@ class TestResilience(unittest.TestCase):
 
     def test_safe_execute_success(self) -> None:
         from core.resilience import safe_execute
+
         result = safe_execute(lambda: 42, fallback=-1)
         self.assertEqual(result, 42)
 
@@ -96,15 +99,17 @@ class TestResilience(unittest.TestCase):
 
     def test_circuit_breaker_opens(self) -> None:
         from core.resilience import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
         self.assertTrue(cb.allow_request())
         cb.record_failure()
-        self.assertTrue(cb.allow_request())   # still under threshold
+        self.assertTrue(cb.allow_request())  # still under threshold
         cb.record_failure()
         self.assertFalse(cb.allow_request())  # now OPEN
 
     def test_circuit_breaker_resets(self) -> None:
         from core.resilience import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0.1)
         cb.record_failure()
         self.assertFalse(cb.allow_request())
@@ -120,6 +125,7 @@ class TestLiveServices(unittest.TestCase):
         if not key or "dummy" in key.lower():
             self.skipTest("GEMINI_API_KEY not set or is dummy")
         from core.llm_setup import ping_gemini
+
         self.assertTrue(ping_gemini())
 
     def test_mem0_ping(self) -> None:
@@ -127,6 +133,7 @@ class TestLiveServices(unittest.TestCase):
         if not key or "dummy" in key.lower():
             self.skipTest("MEM0_API_KEY not set or is dummy")
         from core.memory import ping_mem0
+
         self.assertTrue(ping_mem0())
 
     def test_neo4j_ping(self) -> None:
@@ -135,10 +142,12 @@ class TestLiveServices(unittest.TestCase):
         if not uri or not pwd or "dummy" in uri.lower() or "dummy" in pwd.lower():
             self.skipTest("NEO4J credentials not set or are dummy")
         from core.graph_store import ping_neo4j
+
         self.assertTrue(ping_neo4j())
 
 
 from unittest.mock import patch, MagicMock
+
 
 class TestAgentPipeline(unittest.TestCase):
     """Verify agent query pipeline with mocked services."""
@@ -149,17 +158,18 @@ class TestAgentPipeline(unittest.TestCase):
         # Mock index query engine
         mock_index = MagicMock()
         mock_engine = MagicMock()
-        
+
         # Create a mock response object that has source_nodes and returns the string
         mock_response = MagicMock()
         mock_response.source_nodes = [MagicMock()]
         mock_response.__str__.return_value = "Mocked RAG response about AI."
-        
+
         mock_engine.query.return_value = mock_response
         mock_index.as_query_engine.return_value = mock_engine
         mock_get_index.return_value = mock_index
-        
+
         from core.agent import query
+
         ans = query("What is AI?", memory_context="")
         self.assertEqual(ans, "Mocked RAG response about AI.")
         mock_engine.query.assert_called_once()
@@ -169,13 +179,14 @@ class TestAgentPipeline(unittest.TestCase):
     def test_query_rag_fails_llm_fallback(self, mock_get_llm, mock_get_index) -> None:
         # RAG fails (returns None)
         mock_get_index.return_value = None
-        
+
         # LLM completes successfully
         mock_llm = MagicMock()
         mock_llm.complete.return_value = "Mocked LLM fallback response."
         mock_get_llm.return_value = mock_llm
-        
+
         from core.agent import query
+
         ans = query("Hello?", memory_context="")
         self.assertEqual(ans, "Mocked LLM fallback response.")
         mock_llm.complete.assert_called_once()

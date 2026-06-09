@@ -28,7 +28,8 @@ st.set_page_config(
 )
 
 # ── Premium CSS ───────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
@@ -230,10 +231,13 @@ span[data-baseweb="checkbox"] > div {
     font-size: 0.9rem !important;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ── Session state init ────────────────────────────────────────────────
+
 
 def _init_state() -> None:
     """Initialise all session state keys once."""
@@ -242,7 +246,9 @@ def _init_state() -> None:
     if default_user and f"messages_{default_user}" not in st.session_state:
         st.session_state[f"messages_{default_user}"] = []
     defaults = {
-        "messages": st.session_state.get(f"messages_{default_user}", []) if default_user else [],
+        "messages": (
+            st.session_state.get(f"messages_{default_user}", []) if default_user else []
+        ),
         "user_id": default_user,
         "health": _health,
         "startup_warnings": _warnings,
@@ -252,15 +258,18 @@ def _init_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = val
 
+
 _init_state()
 
 
 # ── Cached service helpers ────────────────────────────────────────────
 
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _fetch_memories(user_id: str) -> List[str]:
     """Retrieve user memories, cached for 30 s to avoid hammering Mem0."""
     from core.memory import get_memories
+
     return get_memories(user_id)
 
 
@@ -268,14 +277,18 @@ def _fetch_memories(user_id: str) -> List[str]:
 def _get_health_monitor():
     """Singleton health monitor."""
     from core.health import HealthMonitor
+
     return HealthMonitor()
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────
 
+
 def _render_sidebar() -> None:
     with st.sidebar:
-        st.markdown("<div class='sidebar-brand'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='sidebar-brand'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True
+        )
         st.caption("Intelligent Neural Architecture for Yielding Agentic Thinking")
         st.markdown("---")
 
@@ -289,7 +302,9 @@ def _render_sidebar() -> None:
         )
         if name != st.session_state.user_id:
             if st.session_state.user_id:
-                st.session_state[f"messages_{st.session_state.user_id}"] = st.session_state.messages
+                st.session_state[f"messages_{st.session_state.user_id}"] = (
+                    st.session_state.messages
+                )
             st.session_state.user_id = name
             st.query_params["user"] = name
             st.session_state.messages = st.session_state.get(f"messages_{name}", [])
@@ -307,6 +322,7 @@ def _render_sidebar() -> None:
         )
         if uploaded_files:
             import os
+
             user_doc_dir = os.path.join("data", "documents", st.session_state.user_id)
             os.makedirs(user_doc_dir, exist_ok=True)
             new_file_saved = False
@@ -317,10 +333,11 @@ def _render_sidebar() -> None:
                         out_f.write(f.getbuffer())
                     new_file_saved = True
                     st.success(f"Saved {f.name}")
-            
+
             if new_file_saved:
                 with st.spinner("Indexing new files..."):
                     from core.agent import build_index
+
                     build_index(st.session_state.user_id)
                     st.success("Graph Index updated!")
                     st.rerun()
@@ -335,21 +352,28 @@ def _render_sidebar() -> None:
                 st.session_state.health = monitor.run_all()
 
         h = st.session_state.health
-        
+
         # Override health display if forced failures are active
         import core.memory as mem
         import core.graph_store as gs
-        
+
         is_mem_forced = getattr(mem._cb, "forced_open", False)
         is_graph_forced = getattr(gs._cb, "forced_open", False)
 
-        for svc, label in [("gemini", "Gemini LLM"), ("mem0", "Mem0 Memory"), ("neo4j", "Neo4j Graph")]:
+        for svc, label in [
+            ("gemini", "Gemini LLM"),
+            ("mem0", "Mem0 Memory"),
+            ("neo4j", "Neo4j Graph"),
+        ]:
             status = h.get(svc, "⚪ Unknown")
             if svc == "mem0" and is_mem_forced:
                 status = "🔴 Forced Fail"
             elif svc == "neo4j" and is_graph_forced:
                 status = "🔴 Forced Fail"
-            st.markdown(f"<div class='status-card'>{status}&ensp;{label}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='status-card'>{status}&ensp;{label}</div>",
+                unsafe_allow_html=True,
+            )
 
         # Startup warnings
         for w in st.session_state.startup_warnings:
@@ -358,19 +382,25 @@ def _render_sidebar() -> None:
         # Resilience Testing Panel
         st.markdown("---")
         st.markdown("##### 🧪 Resilience Testing")
-        
-        fail_mem0 = st.checkbox("🔥 Force Fail Mem0", value=is_mem_forced, key="resilience_fail_mem0")
+
+        fail_mem0 = st.checkbox(
+            "🔥 Force Fail Mem0", value=is_mem_forced, key="resilience_fail_mem0"
+        )
         if fail_mem0 != is_mem_forced:
             mem._cb.forced_open = fail_mem0
             st.rerun()
-            
-        fail_neo4j = st.checkbox("🔥 Force Fail Neo4j", value=is_graph_forced, key="resilience_fail_neo4j")
+
+        fail_neo4j = st.checkbox(
+            "🔥 Force Fail Neo4j", value=is_graph_forced, key="resilience_fail_neo4j"
+        )
         if fail_neo4j != is_graph_forced:
             gs._cb.forced_open = fail_neo4j
             st.rerun()
-            
+
         if fail_mem0 or fail_neo4j:
-            st.warning("Circuit breaker(s) forced OPEN. Systems running in degraded mode.")
+            st.warning(
+                "Circuit breaker(s) forced OPEN. Systems running in degraded mode."
+            )
 
         st.markdown("---")
 
@@ -381,6 +411,7 @@ def _render_sidebar() -> None:
             if st.button("🗑 Clear Memory", use_container_width=True):
                 if st.session_state.user_id:
                     from core.memory import clear_memories
+
                     if clear_memories(st.session_state.user_id):
                         st.success("Memories cleared.")
                         _fetch_memories.clear()
@@ -421,6 +452,7 @@ def _render_sidebar() -> None:
 
 # ── Chat renderer ─────────────────────────────────────────────────────
 
+
 def _render_message(role: str, content: str) -> None:
     """Display a single chat bubble."""
     if role == "user":
@@ -436,6 +468,7 @@ def _render_message(role: str, content: str) -> None:
 
 
 # ── Main page ─────────────────────────────────────────────────────────
+
 
 def main() -> None:
     """Run the main Streamlit UI loop."""
@@ -453,19 +486,23 @@ def main() -> None:
 
     if not st.session_state.user_id:
         # Render a gorgeous 2026-style MCA Final Project landing page!
-        st.markdown("""
+        st.markdown(
+            """
         <div style="padding: 1rem 0; margin-top: 0.5rem; animation: fadeUp 0.4s ease-out; text-align: center;">
             <div style="background: linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%); 
                         border: 1px solid rgba(167, 139, 250, 0.18); 
                         padding: 3.5rem 2rem; border-radius: 24px; max-width: 850px; margin: 0 auto;
                         box-shadow: 0 20px 40px rgba(0,0,0,0.5); backdrop-filter: blur(16px);">
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         col_img1, col_img2, col_img3 = st.columns([1, 1, 1])
         with col_img2:
             st.image("assets/logo.png", use_container_width=True)
 
-        st.markdown("""
+        st.markdown(
+            """
                 <h2 style="background: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #6366f1 100%);
                            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
                            font-size: 2.8rem; font-weight: 800; margin-top: 1rem; margin-bottom: 0.75rem; letter-spacing: -0.03em;">
@@ -480,7 +517,9 @@ def main() -> None:
                     <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 1rem; font-size: 0.95rem;">
                         👤 Initialize Demo Profile Workspace
                     </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         col_space1, col_input, col_space2 = st.columns([1, 3, 1])
         with col_input:
@@ -488,7 +527,7 @@ def main() -> None:
                 "Profile Name",
                 placeholder="e.g. Moham",
                 key="landing_name_input",
-                label_visibility="collapsed"
+                label_visibility="collapsed",
             )
             if st.button("🚀 Enter Agentic Workspace", use_container_width=True):
                 if name_input.strip():
@@ -498,7 +537,8 @@ def main() -> None:
                 else:
                     st.warning("Please enter a name to proceed.")
 
-        st.markdown("""
+        st.markdown(
+            """
                 </div>
             </div>
         </div>
@@ -534,7 +574,9 @@ def main() -> None:
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     # ── Pre-warm Knowledge Graph Index ────────────────────────────────
@@ -542,6 +584,7 @@ def main() -> None:
         with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
             try:
                 from core.agent import get_index
+
                 get_index()
                 st.session_state.index_warmed = True
                 st.session_state.startup_warning_details = None
@@ -551,7 +594,8 @@ def main() -> None:
 
     # ── Sandbox warning indicator ──
     if getattr(st.session_state, "startup_warning_details", None):
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); 
                     padding: 0.85rem 1.2rem; border-radius: 12px; margin-bottom: 1.5rem; 
                     display: flex; align-items: center; gap: 0.75rem; color: #fcd34d; font-size: 0.88rem;">
@@ -560,7 +604,9 @@ def main() -> None:
                 <strong>Sandbox Mode Active:</strong> External API credentials missing or invalid. Agent queries will fall back to direct LLM fallback and mock data structures.
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     # ── Header ────────────────────────────────────────────────────────
     st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
@@ -576,12 +622,17 @@ def main() -> None:
     col_left, col_right = st.columns([5, 7], gap="medium")
 
     with col_left:
-        st.markdown("<h3 style='margin-top:0; color:#f4f4f5; font-size:1.4rem; font-weight:700;'>💬 Workspace Chat</h3>", unsafe_allow_html=True)
-        
+        st.markdown(
+            "<h3 style='margin-top:0; color:#f4f4f5; font-size:1.4rem; font-weight:700;'>💬 Workspace Chat</h3>",
+            unsafe_allow_html=True,
+        )
+
         # ── Memory display ────────────────────────────────────────────────
         memories = _fetch_memories(st.session_state.user_id)
         if memories:
-            with st.expander(f"🧠 Long-Term Memory  ({len(memories)} facts)", expanded=False):
+            with st.expander(
+                f"🧠 Long-Term Memory  ({len(memories)} facts)", expanded=False
+            ):
                 pills = "".join(f"<span class='mem-pill'>{m}</span>" for m in memories)
                 st.markdown(pills, unsafe_allow_html=True)
 
@@ -592,24 +643,35 @@ def main() -> None:
             _render_message(msg["role"], msg["content"])
 
         # ── User input ────────────────────────────────────────────────────
-        if prompt := st.chat_input("Ask about your documents, or tell me about yourself…"):
+        if prompt := st.chat_input(
+            "Ask about your documents, or tell me about yourself…"
+        ):
             # Display user bubble immediately
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.rerun()
 
     with col_right:
-        st.markdown("<h3 style='margin-top:0; color:#f4f4f5; font-size:1.4rem; font-weight:700;'>🕸️ Neural Architecture Graph</h3>", unsafe_allow_html=True)
-        
+        st.markdown(
+            "<h3 style='margin-top:0; color:#f4f4f5; font-size:1.4rem; font-weight:700;'>🕸️ Neural Architecture Graph</h3>",
+            unsafe_allow_html=True,
+        )
+
         from core.graph_store import get_visualization_data
+
         graph_data = get_visualization_data(st.session_state.user_id)
-        
+
         import json
+
         nodes_js = json.dumps(graph_data["nodes"])
         edges_js = json.dumps(graph_data["edges"])
-        
-        is_mock_banner = "⚠️ **Showing System Architecture Graph** (Neo4j is empty or offline)" if graph_data["is_mock"] else "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
+
+        is_mock_banner = (
+            "⚠️ **Showing System Architecture Graph** (Neo4j is empty or offline)"
+            if graph_data["is_mock"]
+            else "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
+        )
         st.info(is_mock_banner)
-        
+
         # Generate Vis.js Network HTML with detailed interactive panel
         html_content = f"""
         <!DOCTYPE html>
@@ -1060,32 +1122,39 @@ def main() -> None:
 
     # ── User Input Query Resolution (Executed in rerun / background) ────
     # In Streamlit's new layout, we check if there's a new query appended to state that needs processing
-    if len(st.session_state.messages) > 0 and st.session_state.messages[-1]["role"] == "user":
+    if (
+        len(st.session_state.messages) > 0
+        and st.session_state.messages[-1]["role"] == "user"
+    ):
         user_prompt = st.session_state.messages[-1]["content"]
-        
+
         # Save memory
         from core.memory import add_memory
+
         add_memory(st.session_state.user_id, user_prompt)
-        
+
         # Get memory context
         mem_lines = _fetch_memories(st.session_state.user_id)
         memory_ctx = "\n".join(f"• {m}" for m in mem_lines) if mem_lines else ""
-        
+
         # Render a temporary placeholder thinking text in the left column
         with col_left:
             st.markdown("<div class='thinking'>Thinking…</div>", unsafe_allow_html=True)
-        
+
         # Query agent
         from core.agent import query as agent_query
-        answer = agent_query(user_prompt, user_id=st.session_state.user_id, memory_context=memory_ctx)
-        
+
+        answer = agent_query(
+            user_prompt, user_id=st.session_state.user_id, memory_context=memory_ctx
+        )
+
         # Append answer
         st.session_state.messages.append({"role": "assistant", "content": answer})
-        
+
         # Keep window clean
         if len(st.session_state.messages) > 20:
             st.session_state.messages = st.session_state.messages[-20:]
-            
+
         st.rerun()
 
 

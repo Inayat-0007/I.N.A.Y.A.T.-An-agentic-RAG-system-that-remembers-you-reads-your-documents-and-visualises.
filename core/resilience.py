@@ -25,6 +25,7 @@ T = TypeVar("T")
 # Circuit Breaker
 # ---------------------------------------------------------------------------
 
+
 class CircuitBreaker:
     """Lightweight circuit breaker that prevents hammering a dead service.
 
@@ -38,7 +39,9 @@ class CircuitBreaker:
     OPEN = "OPEN"
     HALF_OPEN = "HALF_OPEN"
 
-    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0) -> None:
+    def __init__(
+        self, failure_threshold: int = 3, recovery_timeout: float = 60.0
+    ) -> None:
         """Initialise the breaker.
 
         Args:
@@ -89,6 +92,7 @@ class CircuitBreaker:
 # Retry decorator (tenacity-backed)
 # ---------------------------------------------------------------------------
 
+
 def resilient_call(
     max_attempts: int = 3,
     min_wait: float = 1,
@@ -104,6 +108,7 @@ def resilient_call(
     Returns:
         Decorated function with automatic retry behaviour.
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @retry(
             stop=stop_after_attempt(max_attempts),
@@ -115,13 +120,16 @@ def resilient_call(
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # Safe execute (catch-all with fallback)
 # ---------------------------------------------------------------------------
+
 
 def safe_execute(
     func: Callable[..., T],

@@ -30,10 +30,11 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
 
     def _get_text_embedding(self, text: str) -> List[float]:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
+
         for attempt in Retrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=20),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 time.sleep(0.2)
@@ -41,10 +42,11 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
 
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
+
         for attempt in Retrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=20),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 time.sleep(0.25)
@@ -52,10 +54,11 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
 
     async def _aget_text_embedding(self, text: str) -> List[float]:
         from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=20),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 await asyncio.sleep(0.2)
@@ -63,10 +66,11 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
 
     async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=20),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 await asyncio.sleep(0.25)
@@ -78,10 +82,11 @@ class ResilientGoogleGenAI(GoogleGenAI):
 
     def complete(self, prompt: str, **kwargs: Any) -> Any:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
+
         for attempt in Retrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=30),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 time.sleep(0.25)
@@ -89,10 +94,11 @@ class ResilientGoogleGenAI(GoogleGenAI):
 
     async def acomplete(self, prompt: str, **kwargs: Any) -> Any:
         from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=30),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 await asyncio.sleep(0.25)
@@ -100,10 +106,11 @@ class ResilientGoogleGenAI(GoogleGenAI):
 
     def chat(self, messages: List[Any], **kwargs: Any) -> Any:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
+
         for attempt in Retrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=30),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 time.sleep(0.25)
@@ -111,10 +118,11 @@ class ResilientGoogleGenAI(GoogleGenAI):
 
     async def achat(self, messages: List[Any], **kwargs: Any) -> Any:
         from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(6),
             wait=wait_exponential(multiplier=2, min=2, max=30),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 await asyncio.sleep(0.25)

@@ -17,7 +17,9 @@ from typing import Optional
 
 _LOGGER_NAME = "inayat"
 _LOG_FILE = "inayat_debug.log"
-_FMT = "%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s"
+_FMT = (
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s"
+)
 _DATE_FMT = "%Y-%m-%dT%H:%M:%S"
 
 
@@ -63,15 +65,19 @@ def setup_logging(
     try:
         file_h = RotatingFileHandler(
             log_file,
-            maxBytes=5 * 1024 * 1024,   # 5 MB
+            maxBytes=5 * 1024 * 1024,  # 5 MB
             backupCount=3,
             encoding="utf-8",
         )
-        file_h.setLevel(logging.DEBUG)   # file always captures everything
+        file_h.setLevel(logging.DEBUG)  # file always captures everything
         file_h.setFormatter(formatter)
         logger.addHandler(file_h)
     except OSError as exc:
         logger.warning("Could not create log file '%s': %s", log_file, exc)
 
-    logger.info("Logger '%s' initialised (level=%s)", _LOGGER_NAME, logging.getLevelName(log_level))
+    logger.info(
+        "Logger '%s' initialised (level=%s)",
+        _LOGGER_NAME,
+        logging.getLevelName(log_level),
+    )
     return logger

@@ -26,7 +26,9 @@ from core.resilience import safe_execute
 
 logger = logging.getLogger("inayat")
 
-_DOC_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "documents")
+_DOC_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "documents"
+)
 
 # Dictionary cache for user-specific indices
 _indices: dict = {}
@@ -35,6 +37,7 @@ _indices: dict = {}
 # ---------------------------------------------------------------------------
 # Index lifecycle
 # ---------------------------------------------------------------------------
+
 
 def _has_documents(user_id: str = "default") -> bool:
     """Return True when the user's documents directory contains at least one file."""
@@ -79,12 +82,17 @@ def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     try:
         reader = SimpleDirectoryReader(user_dir)
         docs = reader.load_data()
-        
+
         # Attach user metadata for graph isolation
         for doc in docs:
             doc.metadata["user_id"] = user_id
-            
-        logger.info("Loaded %d document chunks for user %s from %s", len(docs), user_id, user_dir)
+
+        logger.info(
+            "Loaded %d document chunks for user %s from %s",
+            len(docs),
+            user_id,
+            user_dir,
+        )
 
         _index = PropertyGraphIndex.from_documents(
             docs,
@@ -113,6 +121,7 @@ def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
 # ---------------------------------------------------------------------------
 # Query interface
 # ---------------------------------------------------------------------------
+
 
 def query(
     question: str,
@@ -147,14 +156,15 @@ def query(
     # ---- Attempt 1: RAG via PropertyGraphIndex ----
     index = get_index(user_id)
     if index is not None:
+
         def _rag_query() -> Optional[str]:
             from llama_index.core.vector_stores import MetadataFilters, MetadataFilter
-            
+
             # Restrict vector retrieval to documents belonging to this user
             filters = MetadataFilters(
                 filters=[MetadataFilter(key="user_id", value=user_id)]
             )
-            
+
             engine = index.as_query_engine(
                 include_text=True,
                 similarity_top_k=5,
@@ -169,9 +179,11 @@ def query(
                 "not mentioned",
                 "not clear",
                 "does not mention",
-                "cannot find"
+                "cannot find",
             ]
-            if not getattr(response, "source_nodes", None) or any(d in res_str.lower() for d in disclaimers):
+            if not getattr(response, "source_nodes", None) or any(
+                d in res_str.lower() for d in disclaimers
+            ):
                 logger.info("RAG context insufficient — falling back to pure LLM.")
                 return None
             return res_str

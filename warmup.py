@@ -50,6 +50,7 @@ def warmup() -> bool:
 
     # 3. Neo4j keepalive query
     from core.graph_store import run_cypher
+
     rows = safe_execute(lambda: run_cypher("RETURN 1 AS ping"), fallback=[])
     if rows and rows[0].get("ping") == 1:
         logger.info("  Neo4j keepalive query   -> OK")
@@ -58,6 +59,7 @@ def warmup() -> bool:
 
     # 4. Pre-build index (optional — makes first user query faster)
     from core.agent import get_index
+
     idx = safe_execute(get_index, fallback=None)
     if idx:
         logger.info("  PropertyGraphIndex      -> loaded / built")

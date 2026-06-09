@@ -54,6 +54,7 @@ def _get_client() -> Optional[MemoryClient]:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def add_memory(user_id: str, text: str) -> bool:
     """Store a user fact / interaction in Mem0.
 
@@ -106,7 +107,9 @@ def get_memories(user_id: str) -> List[str]:
         if not memories_list:
             return []
         # Mem0 returns a list of dicts with a "memory" key
-        return [m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m]
+        return [
+            m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m
+        ]
 
     sentinel = object()
     result = safe_execute(_get, fallback=sentinel)
@@ -140,7 +143,9 @@ def search_memories(user_id: str, query: str, limit: int = 5) -> List[str]:
         memories_list = raw.get("results", []) if isinstance(raw, dict) else raw
         if not memories_list:
             return []
-        return [m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m]
+        return [
+            m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m
+        ]
 
     sentinel = object()
     result = safe_execute(_search, fallback=sentinel)
