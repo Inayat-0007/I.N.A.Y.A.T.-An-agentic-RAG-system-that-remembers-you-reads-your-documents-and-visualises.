@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cyber-bg text-cyber-text font-body antialiased;
+    background: radial-gradient(circle at 50% 0%, #0c0b1c 0%, #040408 75%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-wide;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #06060c;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.15);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* Glassmorphism Classes */
+.glass {
+  background: rgba(13, 13, 23, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+}
+
+.glass-glow-cyan {
+  background: rgba(13, 13, 23, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  box-shadow: 0 8px 32px 0 rgba(0, 240, 255, 0.08);
+}
+
+.glass-glow-magenta {
+  background: rgba(13, 13, 23, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 0, 229, 0.25);
+  box-shadow: 0 8px 32px 0 rgba(255, 0, 229, 0.08);
+}
+
+/* Cyber Accent Borders */
+.cyber-glow {
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.15), inset 0 0 10px rgba(0, 240, 255, 0.05);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5), 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.text-glow-magenta {
+  text-shadow: 0 0 8px rgba(255, 0, 229, 0.5), 0 0 15px rgba(255, 0, 229, 0.3);
+}
+
+/* Custom UI Elements */
+.chat-bubble-user {
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.65) 0%, rgba(20, 18, 55, 0.75) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 18px 18px 4px 18px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.chat-bubble-ai {
+  background: linear-gradient(135deg, rgba(20, 20, 28, 0.7) 0%, rgba(15, 15, 22, 0.8) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 18px 18px 18px 4px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Custom Vis.js Panel Styling overrides */
+.vis-network {
+  outline: none;
+}
+.vis-close {
+  display: none !important;
+}
+
+/* Custom animation extensions */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
