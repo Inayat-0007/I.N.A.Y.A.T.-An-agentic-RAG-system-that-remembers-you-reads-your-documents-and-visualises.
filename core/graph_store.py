@@ -126,6 +126,7 @@ def get_neo4j_property_graph_store() -> Optional[Neo4jPropertyGraphStore]:
             username=user,
             password=pwd,
             url=uri,
+            database=user,
         )
         logger.info("Neo4jPropertyGraphStore created.")
         return store

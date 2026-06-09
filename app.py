@@ -308,12 +308,12 @@ def _render_sidebar() -> None:
         st.markdown("---")
         st.markdown("##### 🧪 Resilience Testing")
         
-        fail_mem0 = st.checkbox("🔥 Force Fail Mem0", value=is_mem_forced)
+        fail_mem0 = st.checkbox("🔥 Force Fail Mem0", value=is_mem_forced, key="resilience_fail_mem0")
         if fail_mem0 != is_mem_forced:
             mem._cb.forced_open = fail_mem0
             st.rerun()
             
-        fail_neo4j = st.checkbox("🔥 Force Fail Neo4j", value=is_graph_forced)
+        fail_neo4j = st.checkbox("🔥 Force Fail Neo4j", value=is_graph_forced, key="resilience_fail_neo4j")
         if fail_neo4j != is_graph_forced:
             gs._cb.forced_open = fail_neo4j
             st.rerun()
@@ -399,41 +399,6 @@ def main() -> None:
             "then restart the app."
         )
         st.stop()
-
-    # ── Pre-warm Knowledge Graph Index ────────────────────────────────
-    if "index_warmed" not in st.session_state:
-        with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
-            try:
-                from core.agent import get_index
-                get_index()
-                st.session_state.index_warmed = True
-                st.session_state.startup_warning_details = None
-            except Exception as e:
-                st.session_state.startup_warning_details = str(e)
-                st.session_state.index_warmed = False
-
-    # ── Sandbox warning indicator ──
-    if getattr(st.session_state, "startup_warning_details", None):
-        st.markdown("""
-        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); 
-                    padding: 0.85rem 1.2rem; border-radius: 12px; margin-bottom: 1.5rem; 
-                    display: flex; align-items: center; gap: 0.75rem; color: #fcd34d; font-size: 0.88rem;">
-            <span>⚠️</span>
-            <div>
-                <strong>Sandbox Mode Active:</strong> External API credentials missing or invalid. Agent queries will fall back to direct LLM fallback and mock data structures.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Header ────────────────────────────────────────────────────────
-    st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='hero-sub'>"
-        "An agentic RAG system that remembers you, reads your documents, "
-        "and visualises its knowledge graph."
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
     if not st.session_state.user_id:
         # Render a gorgeous 2026-style MCA Final Project landing page!
@@ -521,6 +486,41 @@ def main() -> None:
         """, unsafe_allow_html=True)
         st.stop()
 
+    # ── Pre-warm Knowledge Graph Index ────────────────────────────────
+    if "index_warmed" not in st.session_state:
+        with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
+            try:
+                from core.agent import get_index
+                get_index()
+                st.session_state.index_warmed = True
+                st.session_state.startup_warning_details = None
+            except Exception as e:
+                st.session_state.startup_warning_details = str(e)
+                st.session_state.index_warmed = False
+
+    # ── Sandbox warning indicator ──
+    if getattr(st.session_state, "startup_warning_details", None):
+        st.markdown("""
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); 
+                    padding: 0.85rem 1.2rem; border-radius: 12px; margin-bottom: 1.5rem; 
+                    display: flex; align-items: center; gap: 0.75rem; color: #fcd34d; font-size: 0.88rem;">
+            <span>⚠️</span>
+            <div>
+                <strong>Sandbox Mode Active:</strong> External API credentials missing or invalid. Agent queries will fall back to direct LLM fallback and mock data structures.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Header ────────────────────────────────────────────────────────
+    st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='hero-sub'>"
+        "An agentic RAG system that remembers you, reads your documents, "
+        "and visualises its knowledge graph."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
     # Create Tabs
     tab1, tab2 = st.tabs(["💬 Agent Chat", "🕸️ Knowledge Graph Visualizer"])
 
@@ -548,15 +548,9 @@ def main() -> None:
         from core.graph_store import get_visualization_data
         graph_data = get_visualization_data()
         
-        nodes_js = "[" + ",".join([
-            f"{{id: {n['id']}, label: '{n['label']}', group: '{n['group']}'}}"
-            for n in graph_data["nodes"]
-        ]) + "]"
-        
-        edges_js = "[" + ",".join([
-            f"{{from: {e['from']}, to: {e['to']}, label: '{e['label']}'}}"
-            for e in graph_data["edges"]
-        ]) + "]"
+        import json
+        nodes_js = json.dumps(graph_data["nodes"])
+        edges_js = json.dumps(graph_data["edges"])
         
         is_mock_banner = "⚠️ **Showing System Architecture Graph** (Neo4j is empty or offline)" if graph_data["is_mock"] else "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
         st.info(is_mock_banner)

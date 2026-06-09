@@ -8,18 +8,69 @@ for vector embeddings.  No key is ever hardcoded — everything comes from
 
 import os
 import logging
-from typing import Optional
+import time
+import asyncio
+from typing import Optional, List
 
 from llama_index.core import Settings
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from core.resilience import resilient_call
 
 logger = logging.getLogger("inayat")
 
-_MODEL_NAME = "gemini-2.5-flash"
+_MODEL_NAME = "gemini-flash-lite-latest"
 _EMBED_MODEL = "gemini-embedding-001"
+
+
+class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
+    """Subclass of GoogleGenAIEmbedding with exponential backoff retries and rate-limiting."""
+
+    def _get_text_embedding(self, text: str) -> List[float]:
+        from tenacity import Retrying, stop_after_attempt, wait_exponential
+        for attempt in Retrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=20),
+            reraise=True
+        ):
+            with attempt:
+                time.sleep(0.2)
+                return super()._get_text_embedding(text)
+
+    def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        from tenacity import Retrying, stop_after_attempt, wait_exponential
+        for attempt in Retrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=20),
+            reraise=True
+        ):
+            with attempt:
+                time.sleep(0.25)
+                return super()._get_text_embeddings(texts)
+
+    async def _aget_text_embedding(self, text: str) -> List[float]:
+        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=20),
+            reraise=True
+        ):
+            with attempt:
+                await asyncio.sleep(0.2)
+                return await super()._aget_text_embedding(text)
+
+    async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=2, max=20),
+            reraise=True
+        ):
+            with attempt:
+                await asyncio.sleep(0.25)
+                return await super()._aget_text_embeddings(texts)
 
 
 def _get_api_key() -> str:
@@ -46,13 +97,13 @@ def get_gemini_llm(temperature: float = 0.25) -> GoogleGenAI:
     )
 
 
-def get_gemini_embedding() -> GoogleGenAIEmbedding:
+def get_gemini_embedding() -> ResilientGoogleGenAIEmbedding:
     """Create a Gemini embedding model instance.
 
     Returns:
-        A ``GoogleGenAIEmbedding`` configured with the project embedding model.
+        A ``ResilientGoogleGenAIEmbedding`` configured with the project embedding model.
     """
-    return GoogleGenAIEmbedding(
+    return ResilientGoogleGenAIEmbedding(
         model_name=_EMBED_MODEL,
         api_key=_get_api_key(),
     )
