@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """I.N.A.Y.A.T. — Main Streamlit Application.
 
 Intelligent Neural Architecture for Yielding Agentic Thinking.
@@ -127,7 +128,63 @@ section[data-testid="stSidebar"] {
     0%, 100% { opacity: 0.5; }
     50%      { opacity: 1; }
 }
-</style>
+
+/* ── File Uploader Styling ───────────────────── */
+[data-testid="stFileUploader"] {
+    background: rgba(24, 24, 32, 0.4) !important;
+    border: 1px dashed rgba(167, 139, 250, 0.3) !important;
+    border-radius: 12px !important;
+    padding: 0.5rem !important;
+}
+[data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #a78bfa, #6366f1) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.4rem 1rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stFileUploader"] button:hover {
+    box-shadow: 0 0 15px rgba(167, 139, 250, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── Text Input Styling ─────────────────────── */
+div[data-baseweb="input"] {
+    background: rgba(15, 15, 24, 0.8) !important;
+    border: 1px solid rgba(63, 63, 80, 0.5) !important;
+    border-radius: 8px !important;
+    color: #e4e4e7 !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+div[data-baseweb="input"]:focus-within {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 10px rgba(129, 140, 248, 0.35) !important;
+}
+
+/* ── Button Styling ─────────────────────────── */
+button[kind="secondary"] {
+    background: rgba(24, 24, 32, 0.7) !important;
+    border: 1px solid rgba(63, 63, 80, 0.6) !important;
+    border-radius: 8px !important;
+    color: #e4e4e7 !important;
+    transition: all 0.25s ease !important;
+}
+button[kind="secondary"]:hover {
+    border-color: #a78bfa !important;
+    color: #a78bfa !important;
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.25) !important;
+}
+
+/* ── Checkbox Styling ───────────────────────── */
+span[data-baseweb="checkbox"] > div {
+    border-color: rgba(167, 139, 250, 0.5) !important;
+}
+[data-testid="stCheckbox"] label {
+    color: #a1a1aa !important;
+    font-size: 0.9rem !important;
+}
 """, unsafe_allow_html=True)
 
 
@@ -350,8 +407,23 @@ def main() -> None:
                 from core.agent import get_index
                 get_index()
                 st.session_state.index_warmed = True
+                st.session_state.startup_warning_details = None
             except Exception as e:
-                st.warning(f"Could not warm up graph store index: {e}")
+                st.session_state.startup_warning_details = str(e)
+                st.session_state.index_warmed = False
+
+    # ── Sandbox warning indicator ──
+    if getattr(st.session_state, "startup_warning_details", None):
+        st.markdown("""
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); 
+                    padding: 0.85rem 1.2rem; border-radius: 12px; margin-bottom: 1.5rem; 
+                    display: flex; align-items: center; gap: 0.75rem; color: #fcd34d; font-size: 0.88rem;">
+            <span>⚠️</span>
+            <div>
+                <strong>Sandbox Mode Active:</strong> External API credentials missing or invalid. Agent queries will fall back to direct LLM fallback and mock data structures.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── Header ────────────────────────────────────────────────────────
     st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
@@ -364,7 +436,89 @@ def main() -> None:
     )
 
     if not st.session_state.user_id:
-        st.info("👈  Enter your name in the sidebar to begin.")
+        # Render a gorgeous 2026-style MCA Final Project landing page!
+        st.markdown("""
+        <div style="padding: 1rem 0; margin-top: 0.5rem; animation: fadeUp 0.4s ease-out; text-align: center;">
+            <div style="background: linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%); 
+                        border: 1px solid rgba(167, 139, 250, 0.18); 
+                        padding: 3.5rem 2rem; border-radius: 24px; max-width: 850px; margin: 0 auto;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.5); backdrop-filter: blur(16px);">
+        """, unsafe_allow_html=True)
+
+        col_img1, col_img2, col_img3 = st.columns([1, 1, 1])
+        with col_img2:
+            st.image("assets/logo.png", use_container_width=True)
+
+        st.markdown("""
+                <h2 style="background: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #6366f1 100%);
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                           font-size: 2.8rem; font-weight: 800; margin-top: 1rem; margin-bottom: 0.75rem; letter-spacing: -0.03em;">
+                    I.N.A.Y.A.T.
+                </h2>
+                <p style="color: #a1a1aa; font-size: 1.1rem; max-width: 650px; margin: 0 auto 2.5rem auto; line-height: 1.6; font-weight: 300;">
+                    Intelligent Neural Architecture for Yielding Agentic Thinking.<br/>
+                    A state-of-the-art agentic RAG solution utilizing <b>LlamaIndex Property Graphs</b>, <b>Neo4j AuraDB</b>, and <b>Mem0</b> persistent context.
+                </p>
+                <div style="background: rgba(15, 15, 24, 0.5); border: 1px solid rgba(63, 63, 80, 0.4); 
+                            border-radius: 16px; padding: 1.8rem; max-width: 480px; margin: 0 auto 1.5rem auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.4); text-align: center;">
+                    <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 1rem; font-size: 0.95rem;">
+                        👤 Initialize Demo Profile Workspace
+                    </div>
+        """, unsafe_allow_html=True)
+
+        col_space1, col_input, col_space2 = st.columns([1, 3, 1])
+        with col_input:
+            name_input = st.text_input(
+                "Profile Name",
+                placeholder="e.g. Moham",
+                key="landing_name_input",
+                label_visibility="collapsed"
+            )
+            if st.button("🚀 Enter Agentic Workspace", use_container_width=True):
+                if name_input.strip():
+                    st.session_state.user_id = name_input.strip()
+                    st.query_params["user"] = name_input.strip()
+                    st.rerun()
+                else:
+                    st.warning("Please enter a name to proceed.")
+
+        st.markdown("""
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 3.5rem;">
+            <h3 style="text-align: center; color: #f4f4f5; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; letter-spacing: -0.02em;">
+                🛡️ Core Architectural Pillars
+            </h3>
+            <div style="display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; max-width: 1000px; margin: 0 auto; text-align: left;">
+                <div style="flex: 1; min-width: 280px; background: rgba(15, 15, 24, 0.4); border: 1px solid rgba(167, 139, 250, 0.15); 
+                            padding: 1.8rem; border-radius: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+                    <div style="font-size: 2rem; margin-bottom: 0.75rem;">🧠</div>
+                    <h4 style="color: #a78bfa; font-size: 1.15rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 0;">Persistent Memory</h4>
+                    <p style="color: #a1a1aa; font-size: 0.88rem; line-height: 1.5; margin: 0; font-weight: 300;">
+                        Integrates Mem0 cloud infrastructure to extract, store, and recall personal facts and user preferences dynamically across application sessions.
+                    </p>
+                </div>
+                <div style="flex: 1; min-width: 280px; background: rgba(15, 15, 24, 0.4); border: 1px solid rgba(99, 102, 241, 0.15); 
+                            padding: 1.8rem; border-radius: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+                    <div style="font-size: 2rem; margin-bottom: 0.75rem;">🕸️</div>
+                    <h4 style="color: #818cf8; font-size: 1.15rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 0;">Knowledge Graph RAG</h4>
+                    <p style="color: #a1a1aa; font-size: 0.88rem; line-height: 1.5; margin: 0; font-weight: 300;">
+                        Combines LlamaIndex with Neo4j AuraDB graph databases to traverse entity-relation nodes, delivering high-precision contextual search results.
+                    </p>
+                </div>
+                <div style="flex: 1; min-width: 280px; background: rgba(15, 15, 24, 0.4); border: 1px solid rgba(52, 211, 153, 0.15); 
+                            padding: 1.8rem; border-radius: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+                    <div style="font-size: 2rem; margin-bottom: 0.75rem;">🛡️</div>
+                    <h4 style="color: #34d399; font-size: 1.15rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 0;">Self-Healing Resilience</h4>
+                    <p style="color: #a1a1aa; font-size: 0.88rem; line-height: 1.5; margin: 0; font-weight: 300;">
+                        Implemented with custom active circuit breakers that isolate connection faults and downgrade gracefully, maintaining uptime at all times.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
 
     # Create Tabs

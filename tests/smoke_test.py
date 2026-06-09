@@ -116,20 +116,24 @@ class TestLiveServices(unittest.TestCase):
     """Integration checks — skipped when API keys are absent."""
 
     def test_gemini_ping(self) -> None:
-        if not os.getenv("GEMINI_API_KEY"):
-            self.skipTest("GEMINI_API_KEY not set")
+        key = os.getenv("GEMINI_API_KEY")
+        if not key or "dummy" in key.lower():
+            self.skipTest("GEMINI_API_KEY not set or is dummy")
         from core.llm_setup import ping_gemini
         self.assertTrue(ping_gemini())
 
     def test_mem0_ping(self) -> None:
-        if not os.getenv("MEM0_API_KEY"):
-            self.skipTest("MEM0_API_KEY not set")
+        key = os.getenv("MEM0_API_KEY")
+        if not key or "dummy" in key.lower():
+            self.skipTest("MEM0_API_KEY not set or is dummy")
         from core.memory import ping_mem0
         self.assertTrue(ping_mem0())
 
     def test_neo4j_ping(self) -> None:
-        if not os.getenv("NEO4J_URI") or not os.getenv("NEO4J_PASSWORD"):
-            self.skipTest("NEO4J credentials not set")
+        uri = os.getenv("NEO4J_URI")
+        pwd = os.getenv("NEO4J_PASSWORD")
+        if not uri or not pwd or "dummy" in uri.lower() or "dummy" in pwd.lower():
+            self.skipTest("NEO4J credentials not set or are dummy")
         from core.graph_store import ping_neo4j
         self.assertTrue(ping_neo4j())
 
