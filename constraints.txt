@@ -2,15 +2,17 @@
 # These pins lock the exact versions tested during development.
 # Update cautiously — run smoke tests after any version bump.
 
-streamlit==1.35.0
-google-generativeai==0.7.2
-llama-index==0.10.50
-llama-index-llms-gemini==0.1.7
-llama-index-embeddings-gemini==0.1.7
-llama-index-graph-stores-neo4j==0.1.4
-mem0ai==0.1.29
-neo4j==5.21.0
-tenacity==8.4.1
-python-dotenv==1.0.1
-flake8==7.1.0
-black==24.4.2
+streamlit==1.58.0
+google-generativeai==0.8.6
+llama-index-core==0.14.22
+llama-index-llms-google-genai==0.9.5
+llama-index-embeddings-google-genai==0.5.1
+llama-index-graph-stores-neo4j==0.7.0
+mem0ai==2.0.4
+neo4j==5.28.4
+tenacity==9.1.4
+python-dotenv==1.2.2
+flake8==7.3.0
+black==26.5.1
+pillow==12.2.0
+numpy==2.4.6

@@ -9,9 +9,9 @@ streamlit
 google-generativeai
 
 # LlamaIndex RAG stack
-llama-index
-llama-index-llms-gemini
-llama-index-embeddings-gemini
+llama-index-core
+llama-index-llms-google-genai
+llama-index-embeddings-google-genai
 llama-index-graph-stores-neo4j
 
 # Persistent user memory

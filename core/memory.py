@@ -100,17 +100,19 @@ def get_memories(user_id: str) -> List[str]:
         return []
 
     def _get() -> List[str]:
-        raw = client.get_all(user_id=user_id)
+        raw = client.get_all(filters={"user_id": user_id})
         _cb.record_success()
-        if not raw:
+        memories_list = raw.get("results", []) if isinstance(raw, dict) else raw
+        if not memories_list:
             return []
         # Mem0 returns a list of dicts with a "memory" key
-        return [m["memory"] for m in raw if isinstance(m, dict) and "memory" in m]
+        return [m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m]
 
-    result = safe_execute(_get, fallback=[])
-    if result == []:
-        # Only record failure if we actually expected results but crashed
-        pass
+    sentinel = object()
+    result = safe_execute(_get, fallback=sentinel)
+    if result is sentinel:
+        _cb.record_failure()
+        return []
     return result
 
 
@@ -133,13 +135,19 @@ def search_memories(user_id: str, query: str, limit: int = 5) -> List[str]:
         return []
 
     def _search() -> List[str]:
-        raw = client.search(query, user_id=user_id, limit=limit)
+        raw = client.search(query, filters={"user_id": user_id}, limit=limit)
         _cb.record_success()
-        if not raw:
+        memories_list = raw.get("results", []) if isinstance(raw, dict) else raw
+        if not memories_list:
             return []
-        return [m["memory"] for m in raw if isinstance(m, dict) and "memory" in m]
+        return [m["memory"] for m in memories_list if isinstance(m, dict) and "memory" in m]
 
-    return safe_execute(_search, fallback=[])
+    sentinel = object()
+    result = safe_execute(_search, fallback=sentinel)
+    if result is sentinel:
+        _cb.record_failure()
+        return []
+    return result
 
 
 def clear_memories(user_id: str) -> bool:

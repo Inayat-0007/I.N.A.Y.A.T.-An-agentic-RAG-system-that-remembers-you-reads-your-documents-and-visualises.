@@ -102,9 +102,11 @@ def run_cypher(
         _cb.record_success()
         return records
 
-    out = safe_execute(_run, fallback=[])
-    if out == []:
+    sentinel = object()
+    out = safe_execute(_run, fallback=sentinel)
+    if out is sentinel:
         _cb.record_failure()
+        return []
     return out
 
 

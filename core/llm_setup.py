@@ -11,15 +11,15 @@ import logging
 from typing import Optional
 
 from llama_index.core import Settings
-from llama_index.llms.gemini import Gemini
-from llama_index.embeddings.gemini import GeminiEmbedding
+from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 
 from core.resilience import resilient_call
 
 logger = logging.getLogger("inayat")
 
-_MODEL_NAME = "models/gemini-1.5-flash"
-_EMBED_MODEL = "models/embedding-001"
+_MODEL_NAME = "gemini-1.5-flash"
+_EMBED_MODEL = "text-embedding-004"
 
 
 def _get_api_key() -> str:
@@ -30,29 +30,29 @@ def _get_api_key() -> str:
     return key
 
 
-def get_gemini_llm(temperature: float = 0.25) -> Gemini:
+def get_gemini_llm(temperature: float = 0.25) -> GoogleGenAI:
     """Create a Gemini LLM instance.
 
     Args:
         temperature: Sampling temperature (0 = deterministic, 1 = creative).
 
     Returns:
-        A ``Gemini`` LLM ready for use.
+        A ``GoogleGenAI`` LLM ready for use.
     """
-    return Gemini(
-        model_name=_MODEL_NAME,
+    return GoogleGenAI(
+        model=_MODEL_NAME,
         api_key=_get_api_key(),
         temperature=temperature,
     )
 
 
-def get_gemini_embedding() -> GeminiEmbedding:
+def get_gemini_embedding() -> GoogleGenAIEmbedding:
     """Create a Gemini embedding model instance.
 
     Returns:
-        A ``GeminiEmbedding`` configured with the project embedding model.
+        A ``GoogleGenAIEmbedding`` configured with the project embedding model.
     """
-    return GeminiEmbedding(
+    return GoogleGenAIEmbedding(
         model_name=_EMBED_MODEL,
         api_key=_get_api_key(),
     )

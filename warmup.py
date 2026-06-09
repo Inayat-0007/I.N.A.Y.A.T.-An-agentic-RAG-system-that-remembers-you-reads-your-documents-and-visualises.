@@ -46,23 +46,23 @@ def warmup() -> bool:
     monitor = HealthMonitor()
     statuses = monitor.run_all()
     for svc, status in statuses.items():
-        logger.info("  %-8s → %s", svc, status)
+        logger.info("  %-8s -> %s", svc, status)
 
     # 3. Neo4j keepalive query
     from core.graph_store import run_cypher
     rows = safe_execute(lambda: run_cypher("RETURN 1 AS ping"), fallback=[])
     if rows and rows[0].get("ping") == 1:
-        logger.info("  Neo4j keepalive query   → OK")
+        logger.info("  Neo4j keepalive query   -> OK")
     else:
-        logger.warning("  Neo4j keepalive query   → FAILED (instance may be paused)")
+        logger.warning("  Neo4j keepalive query   -> FAILED (instance may be paused)")
 
     # 4. Pre-build index (optional — makes first user query faster)
     from core.agent import get_index
     idx = safe_execute(get_index, fallback=None)
     if idx:
-        logger.info("  PropertyGraphIndex      → loaded / built")
+        logger.info("  PropertyGraphIndex      -> loaded / built")
     else:
-        logger.warning("  PropertyGraphIndex      → could not initialise")
+        logger.warning("  PropertyGraphIndex      -> could not initialise")
 
     all_up = all(s == UP for s in statuses.values())
     logger.info("=" * 60)
