@@ -192,7 +192,13 @@ def ping_gemini() -> bool:
     Raises:
         Exception: Propagated on failure (handled by resilient_call retries).
     """
-    llm = get_gemini_llm()
+    from llama_index.llms.google_genai import GoogleGenAI
+
+    llm = GoogleGenAI(
+        model=_MODEL_NAME,
+        api_key=_get_api_key(),
+        temperature=0.25,
+    )
     resp = llm.complete("Say OK")
     logger.debug("Gemini ping response: %s", str(resp)[:80])
     return True
