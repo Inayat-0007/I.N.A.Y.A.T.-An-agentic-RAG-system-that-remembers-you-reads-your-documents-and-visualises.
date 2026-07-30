@@ -31,10 +31,13 @@ logger = logging.getLogger("inayat")
 _DOC_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data", "documents"
 )
+_DOC_ROOT_PATH = Path(_DOC_ROOT).resolve()
 
 # Dictionary cache for user-specific indices
 _indices: dict = {}
 _indices_lock = threading.Lock()
+_user_doc_dirs: dict = {}
+_user_doc_dirs_lock = threading.Lock()
 
 
 def _sanitize_user_id(user_id: str) -> str:
@@ -45,14 +48,26 @@ def _sanitize_user_id(user_id: str) -> str:
     return raw
 
 
-def _user_documents_dir(user_id: str) -> str:
-    """Return a validated absolute path under data/documents for a user."""
-    safe_id = _sanitize_user_id(user_id)
-    root = Path(_DOC_ROOT).resolve()
-    candidate = (root / safe_id).resolve()
-    if root not in candidate.parents and candidate != root:
+def register_user_documents_dir(user_id: str, user_dir: str) -> None:
+    """Register a validated user document directory under data/documents."""
+    user_id = _sanitize_user_id(user_id)
+    candidate = Path(user_dir).resolve()
+    if _DOC_ROOT_PATH not in candidate.parents and candidate != _DOC_ROOT_PATH:
         raise ValueError("Invalid user documents path.")
-    return str(candidate)
+    with _user_doc_dirs_lock:
+        _user_doc_dirs[user_id] = str(candidate)
+
+
+def _user_documents_dir(user_id: str) -> str:
+    """Get a registered user documents directory, defaulting safely."""
+    user_id = _sanitize_user_id(user_id)
+    with _user_doc_dirs_lock:
+        configured = _user_doc_dirs.get(user_id)
+    if configured:
+        return configured
+    fallback = str((_DOC_ROOT_PATH / "default").resolve())
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
 
 
 # ---------------------------------------------------------------------------

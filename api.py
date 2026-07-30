@@ -32,7 +32,7 @@ from pydantic import BaseModel
 # Core imports
 from core.startup import run_startup
 from core.health import HealthMonitor
-from core.agent import query as agent_query, build_index, get_index
+from core.agent import query as agent_query, build_index, get_index, register_user_documents_dir
 from core.memory import add_memory, get_memories, clear_memories
 from core.graph_store import get_visualization_data
 import core.memory as mem
@@ -107,6 +107,14 @@ def _normalized_or_400(user_id: str) -> str:
         return _normalize_user_id(user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _user_documents_dir(user_id: str) -> str:
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "documents"))
+    candidate = os.path.abspath(os.path.join(root, user_id))
+    if not candidate.startswith(root + os.sep) and candidate != root:
+        raise HTTPException(status_code=400, detail="Invalid user documents directory path.")
+    return candidate
 
 
 def _get_user_lock(user_id: str) -> threading.Lock:
@@ -217,6 +225,8 @@ def _latest_user_job(user_id: str) -> Optional[Dict[str, Any]]:
 
 def _run_index_job(job_id: str, user_id: str) -> None:
     user_id = _normalize_user_id(user_id)
+    user_dir = _user_documents_dir(user_id)
+    register_user_documents_dir(user_id, user_dir)
     running = _upsert_job(job_id, status="running")
     _publish_event("index_job_update", {"job": running}, user_id=user_id)
     try:
@@ -298,6 +308,7 @@ def api_get_graph(user_id: str):
     if not user_id.strip():
         user_id = "default"
     user_id = _normalized_or_400(user_id)
+    register_user_documents_dir(user_id, _user_documents_dir(user_id))
     # Pre-warm graph index with per-user lock
     with _get_user_lock(user_id):
         get_index(user_id)
@@ -311,6 +322,7 @@ def api_warm_index(user_id: str):
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
     user_id = _normalized_or_400(user_id)
+    register_user_documents_dir(user_id, _user_documents_dir(user_id))
     with _get_user_lock(user_id):
         index = get_index(user_id)
     return {"status": "success", "warmed": index is not None}
@@ -321,6 +333,7 @@ def api_query_agent(req: QueryRequest):
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
     user_id = _normalized_or_400(req.user_id)
+    register_user_documents_dir(user_id, _user_documents_dir(user_id))
     with _get_user_lock(user_id), _set_user_activity(user_id, "querying"):
         add_memory(user_id, req.question)
         mem_lines = get_memories(user_id)
@@ -345,6 +358,7 @@ def api_query_agent_stream(req: QueryRequest):
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
     user_id = _normalized_or_400(req.user_id)
+    register_user_documents_dir(user_id, _user_documents_dir(user_id))
 
     def _format(payload: Dict[str, Any]) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -393,8 +407,8 @@ async def api_upload_files(
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
     user_id = _normalized_or_400(user_id)
-        
-    doc_dir = os.path.join("data", "documents", user_id)
+    doc_dir = _user_documents_dir(user_id)
+    register_user_documents_dir(user_id, doc_dir)
     os.makedirs(doc_dir, exist_ok=True)
     
     saved_files = []
