@@ -45,6 +45,16 @@ def _sanitize_user_id(user_id: str) -> str:
     return safe or "default"
 
 
+def _user_documents_dir(user_id: str) -> str:
+    """Return a validated absolute path under data/documents for a user."""
+    safe_id = _sanitize_user_id(user_id)
+    root = Path(_DOC_ROOT).resolve()
+    candidate = (root / safe_id).resolve()
+    if root not in candidate.parents and candidate != root:
+        raise ValueError("Invalid user documents path.")
+    return str(candidate)
+
+
 # ---------------------------------------------------------------------------
 # Index lifecycle
 # ---------------------------------------------------------------------------
@@ -52,8 +62,7 @@ def _sanitize_user_id(user_id: str) -> str:
 
 def _has_documents(user_id: str = "default") -> bool:
     """Return True when the user's documents directory contains at least one file."""
-    user_id = _sanitize_user_id(user_id)
-    user_dir = os.path.join(_DOC_ROOT, user_id)
+    user_dir = _user_documents_dir(user_id)
     if not os.path.isdir(user_dir):
         return False
     files = [f for f in os.listdir(user_dir) if not f.startswith(".")]
@@ -77,7 +86,7 @@ def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
         logger.warning("Neo4j graph store unavailable — cannot build index.")
         return None
 
-    user_dir = os.path.join(_DOC_ROOT, user_id)
+    user_dir = _user_documents_dir(user_id)
     os.makedirs(user_dir, exist_ok=True)
 
     if not _has_documents(user_id):
