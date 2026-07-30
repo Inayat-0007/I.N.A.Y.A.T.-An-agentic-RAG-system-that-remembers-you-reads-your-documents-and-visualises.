@@ -12,6 +12,7 @@ import time
 import json
 import uuid
 import asyncio
+import re
 import threading
 import logging
 from contextlib import contextmanager
@@ -94,7 +95,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_user_id(user_id: str) -> str:
+    raw = (user_id or "default").strip()
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
+    safe = safe.strip("._")
+    return safe or "default"
+
+
 def _get_user_lock(user_id: str) -> threading.Lock:
+    user_id = _normalize_user_id(user_id)
     with _user_lock_map_lock:
         if user_id not in _user_lock_map:
             _user_lock_map[user_id] = threading.Lock()
@@ -103,6 +112,7 @@ def _get_user_lock(user_id: str) -> threading.Lock:
 
 @contextmanager
 def _set_user_activity(user_id: str, activity: str):
+    user_id = _normalize_user_id(user_id)
     with _user_state_lock:
         state = _user_state.setdefault(user_id, {"querying": False, "indexing": False})
         state[activity] = True
@@ -115,6 +125,7 @@ def _set_user_activity(user_id: str, activity: str):
 
 
 def _snapshot_user_state(user_id: str) -> Dict[str, bool]:
+    user_id = _normalize_user_id(user_id)
     with _user_state_lock:
         state = _user_state.get(user_id, {"querying": False, "indexing": False})
         return dict(state)
@@ -137,6 +148,7 @@ def _publish_event(event_type: str, payload: Dict[str, Any], user_id: Optional[s
 
 
 def _fetch_events_since(last_id: int, user_id: str) -> List[Dict[str, Any]]:
+    user_id = _normalize_user_id(user_id)
     with _event_lock:
         return [
             e
@@ -188,6 +200,7 @@ def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _latest_user_job(user_id: str) -> Optional[Dict[str, Any]]:
+    user_id = _normalize_user_id(user_id)
     with _upload_jobs_lock:
         user_jobs = [j for j in _upload_jobs.values() if j.get("user_id") == user_id]
     if not user_jobs:
@@ -196,6 +209,7 @@ def _latest_user_job(user_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _run_index_job(job_id: str, user_id: str) -> None:
+    user_id = _normalize_user_id(user_id)
     running = _upsert_job(job_id, status="running")
     _publish_event("index_job_update", {"job": running}, user_id=user_id)
     try:
@@ -256,6 +270,7 @@ def api_get_memories(user_id: str):
     """Fetch consolidated long-term memory facts for a user from Mem0."""
     if not user_id.strip():
         return {"memories": []}
+    user_id = _normalize_user_id(user_id)
     facts = get_memories(user_id)
     return {"memories": facts}
 
@@ -264,6 +279,7 @@ def api_clear_memories(user_id: str):
     """Clear all Mem0 memory records for a given user profile."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
+    user_id = _normalize_user_id(user_id)
     success = clear_memories(user_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to clear memories.")
@@ -274,6 +290,7 @@ def api_get_graph(user_id: str):
     """Retrieve node-edge details for Vis.js representation."""
     if not user_id.strip():
         user_id = "default"
+    user_id = _normalize_user_id(user_id)
     # Pre-warm graph index with per-user lock
     with _get_user_lock(user_id):
         get_index(user_id)
@@ -286,6 +303,7 @@ def api_warm_index(user_id: str):
     """Warm a user's graph index cache in the background-safe path."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
+    user_id = _normalize_user_id(user_id)
     with _get_user_lock(user_id):
         index = get_index(user_id)
     return {"status": "success", "warmed": index is not None}
@@ -295,17 +313,18 @@ def api_query_agent(req: QueryRequest):
     """Perform the 6-step prompt RAG reasoning query loop."""
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    with _get_user_lock(req.user_id), _set_user_activity(req.user_id, "querying"):
-        add_memory(req.user_id, req.question)
-        mem_lines = get_memories(req.user_id)
+    user_id = _normalize_user_id(req.user_id)
+    with _get_user_lock(user_id), _set_user_activity(user_id, "querying"):
+        add_memory(user_id, req.question)
+        mem_lines = get_memories(user_id)
         memory_ctx = "\n".join(f"• {m}" for m in mem_lines) if mem_lines else ""
         answer = agent_query(
             req.question,
-            user_id=req.user_id,
+            user_id=user_id,
             memory_context=memory_ctx
         )
-    _publish_event("memory_updated", {"memories": mem_lines}, user_id=req.user_id)
-    _publish_event("graph_updated", {"user_id": req.user_id, "reason": "query"}, user_id=req.user_id)
+    _publish_event("memory_updated", {"memories": mem_lines}, user_id=user_id)
+    _publish_event("graph_updated", {"user_id": user_id, "reason": "query"}, user_id=user_id)
     return {
         "answer": answer,
         "memory_context": memory_ctx,
@@ -318,19 +337,20 @@ def api_query_agent_stream(req: QueryRequest):
     """Stream query responses token-by-token for real-time chat rendering."""
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
+    user_id = _normalize_user_id(req.user_id)
 
     def _format(payload: Dict[str, Any]) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     def _stream():
         try:
-            with _get_user_lock(req.user_id), _set_user_activity(req.user_id, "querying"):
-                add_memory(req.user_id, req.question)
-                mem_lines = get_memories(req.user_id)
+            with _get_user_lock(user_id), _set_user_activity(user_id, "querying"):
+                add_memory(user_id, req.question)
+                mem_lines = get_memories(user_id)
                 memory_ctx = "\n".join(f"• {m}" for m in mem_lines) if mem_lines else ""
                 answer = agent_query(
                     req.question,
-                    user_id=req.user_id,
+                    user_id=user_id,
                     memory_context=memory_ctx
                 )
 
@@ -345,13 +365,13 @@ def api_query_agent_stream(req: QueryRequest):
                 "memory_context": memory_ctx,
             }
             yield _format(final_payload)
-            _publish_event("memory_updated", {"memories": mem_lines}, user_id=req.user_id)
-            _publish_event("graph_updated", {"user_id": req.user_id, "reason": "query"}, user_id=req.user_id)
+            _publish_event("memory_updated", {"memories": mem_lines}, user_id=user_id)
+            _publish_event("graph_updated", {"user_id": user_id, "reason": "query"}, user_id=user_id)
         except Exception as exc:
-            logger.error("Streaming query failed for user %s: %s", req.user_id, exc, exc_info=True)
+            logger.error("Streaming query failed for user %s: %s", user_id, exc, exc_info=True)
             message = "I'm sorry, I'm having trouble connecting to my services right now. Please try again in a moment."
             yield _format({"type": "error", "error": message})
-            _publish_event("query_error", {"error": str(exc)}, user_id=req.user_id)
+            _publish_event("query_error", {"error": str(exc)}, user_id=user_id)
 
     headers = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     return StreamingResponse(_stream(), media_type="text/event-stream", headers=headers)
@@ -365,6 +385,7 @@ async def api_upload_files(
     """Ingest PDF/TXT documents into isolated profile folders and rebuild LlamaIndex."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
+    user_id = _normalize_user_id(user_id)
         
     doc_dir = os.path.join("data", "documents", user_id)
     os.makedirs(doc_dir, exist_ok=True)
@@ -410,6 +431,7 @@ async def api_events(user_id: str):
     """SSE stream for live health, indexing, memory, and graph updates."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
+    user_id = _normalize_user_id(user_id)
 
     async def _events():
         init_payload = {

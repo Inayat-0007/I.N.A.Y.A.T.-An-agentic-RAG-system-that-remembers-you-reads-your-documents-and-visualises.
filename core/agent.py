@@ -10,6 +10,7 @@ Graceful degradation:
 """
 
 import os
+import re
 import logging
 import threading
 from pathlib import Path
@@ -36,6 +37,14 @@ _indices: dict = {}
 _indices_lock = threading.Lock()
 
 
+def _sanitize_user_id(user_id: str) -> str:
+    """Normalize user IDs to a filesystem-safe token."""
+    raw = (user_id or "default").strip()
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
+    safe = safe.strip("._")
+    return safe or "default"
+
+
 # ---------------------------------------------------------------------------
 # Index lifecycle
 # ---------------------------------------------------------------------------
@@ -43,6 +52,7 @@ _indices_lock = threading.Lock()
 
 def _has_documents(user_id: str = "default") -> bool:
     """Return True when the user's documents directory contains at least one file."""
+    user_id = _sanitize_user_id(user_id)
     user_dir = os.path.join(_DOC_ROOT, user_id)
     if not os.path.isdir(user_dir):
         return False
@@ -60,6 +70,7 @@ def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     Returns:
         The constructed index, or ``None`` on failure.
     """
+    user_id = _sanitize_user_id(user_id)
     configure_llama_settings()
     graph_store = get_neo4j_property_graph_store()
     if graph_store is None:
@@ -115,6 +126,7 @@ def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     Returns:
         The ``PropertyGraphIndex``, or ``None`` when unavailable.
     """
+    user_id = _sanitize_user_id(user_id)
     if user_id in _indices and _indices[user_id] is not None:
         return _indices[user_id]
     with _indices_lock:
@@ -149,6 +161,7 @@ def query(
     Returns:
         The agent's answer as a string.
     """
+    user_id = _sanitize_user_id(user_id)
     # Build an augmented prompt when memory context is available
     if memory_context:
         augmented = (
