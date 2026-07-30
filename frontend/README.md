@@ -32,7 +32,11 @@ The FastAPI server exposes the following endpoints:
 *   `POST /api/memories/clear?user_id=...`: Deletes memories.
 *   `GET /api/graph?user_id=...`: Queries database entity relations, returning Vis.js node/edge objects.
 *   `POST /api/query`: Submits natural language queries. Enforces the 6-step loop: memory update -> RAG retrieval -> LLM execution -> callback check.
-*   `POST /api/upload`: Multi-file form uploader. Automatically isolatively stores documents to `data/documents/{user_id}/` and rebuilds the LlamaIndex PropertyGraph index.
+*   `POST /api/query/stream`: Streams assistant output token-by-token (SSE format) for real-time chat rendering.
+*   `POST /api/upload`: Multi-file form uploader. Stores files and returns an async indexing `job_id` immediately.
+*   `GET /api/upload/jobs/{job_id}`: Returns async indexing lifecycle state (`pending`, `running`, `completed`, `failed`).
+*   `GET /api/events?user_id=...`: SSE feed for live `health_update`, `index_job_update`, `memory_updated`, and `graph_updated` events.
+*   `POST /api/index/warm?user_id=...`: Warms the user graph index cache to reduce first-query latency.
 
 ---
 

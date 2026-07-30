@@ -19,6 +19,8 @@ export default function AgentWorkspace({ userId, setUserId }) {
   const [graphOpen, setGraphOpen] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
+  const [graphVersion, setGraphVersion] = useState(0)
+  const [uploadJob, setUploadJob] = useState(null)
 
   const chatEndRef = useRef(null)
   const networkRef = useRef(null)
@@ -41,6 +43,64 @@ export default function AgentWorkspace({ userId, setUserId }) {
     
     // Load health status
     refreshHealth()
+    fetch(`/api/index/warm?user_id=${encodeURIComponent(userId)}`, { method: 'POST' }).catch(() => {})
+  }, [userId])
+
+  // Subscribe to server-sent events for live updates
+  useEffect(() => {
+    if (!userId) return
+    const source = new EventSource(`/api/events?user_id=${encodeURIComponent(userId)}`)
+
+    source.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data)
+        const { type, payload } = parsed
+        if (type === 'init') {
+          if (payload?.health) {
+            setHealth(payload.health.statuses || {})
+            setBreakers(payload.health.breakers || {})
+          }
+          if (payload?.user_state) {
+            const indexingState = Boolean(payload.user_state.indexing)
+            setIndexing(indexingState)
+          }
+          if (payload?.active_job) {
+            setUploadJob(payload.active_job)
+            const status = payload.active_job.status
+            setIndexing(status === 'pending' || status === 'running')
+          }
+        } else if (type === 'health_update') {
+          setHealth(payload?.statuses || {})
+          setBreakers(payload?.breakers || {})
+        } else if (type === 'memory_updated') {
+          if (Array.isArray(payload?.memories)) setMemories(payload.memories)
+        } else if (type === 'index_job_update') {
+          const job = payload?.job
+          if (!job) return
+          setUploadJob(job)
+          const status = job.status
+          setIndexing(status === 'pending' || status === 'running')
+          if (status === 'completed') {
+            setGraphVersion(prev => prev + 1)
+            alert(`Graph indexing completed for ${job.indexed_files?.join(', ') || 'uploaded files'}.`)
+          } else if (status === 'failed') {
+            alert(`Graph indexing failed: ${job.error || 'Unknown error'}`)
+          }
+        } else if (type === 'graph_updated') {
+          setGraphVersion(prev => prev + 1)
+        }
+      } catch (err) {
+        console.error('Failed to parse event payload:', err)
+      }
+    }
+
+    source.onerror = () => {
+      source.close()
+    }
+
+    return () => {
+      source.close()
+    }
   }, [userId])
 
   // Cache message changes to local storage
@@ -147,7 +207,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
         networkRef.current = null
       }
     }
-  }, [graphOpen, userId])
+  }, [graphOpen, userId, graphVersion])
 
   // API wrappers
   const refreshMemories = async () => {
@@ -206,57 +266,85 @@ export default function AgentWorkspace({ userId, setUserId }) {
     if (!promptText.trim()) return
 
     if (!textToSend) setInputVal('')
-    
+
     // Add user message
     const userMsg = { role: 'user', content: promptText }
-    setMessages(prev => [...prev, userMsg])
+    const assistantId = `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    setMessages(prev => [
+      ...prev,
+      userMsg,
+      { id: assistantId, role: 'assistant', content: '', isRag: true, isMemory: false }
+    ])
     setLoading(true)
 
     try {
-      const memoryCtx = memories.map(m => `• ${m}`).join('\n')
-      
-      const res = await fetch('/api/query', {
+      const res = await fetch('/api/query/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: promptText,
-          user_id: userId,
-          memory_context: memoryCtx
+          user_id: userId
         })
       })
-      const data = await res.json()
 
-      // Add assistant response
-      const assistantMsg = { 
-        role: 'assistant', 
-        content: data.answer,
-        // Detect citations based on returned context
-        isRag: data.answer.toLowerCase().includes("embedding") || data.answer.toLowerCase().includes("document") || !data.answer.toLowerCase().includes("fallback"),
-        isMemory: memories.some(m => data.answer.toLowerCase().includes(m.split(' ')[0].toLowerCase()))
+      if (!res.ok || !res.body) {
+        throw new Error('Streaming request failed')
       }
-      
-      setMessages(prev => [...prev, assistantMsg])
-      
-      // Update memory tags list
-      if (data.memories) {
-        setMemories(data.memories)
-      } else {
-        refreshMemories()
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let streamed = ''
+      let buffer = ''
+      let finalPayload = null
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const chunks = buffer.split('\n\n')
+        buffer = chunks.pop() || ''
+
+        for (const chunk of chunks) {
+          const dataLine = chunk
+            .split('\n')
+            .find(line => line.startsWith('data:'))
+          if (!dataLine) continue
+          const payload = JSON.parse(dataLine.replace(/^data:\s*/, ''))
+
+          if (payload.type === 'token') {
+            streamed += payload.content || ''
+            setMessages(prev => prev.map(msg => (
+              msg.id === assistantId ? { ...msg, content: streamed } : msg
+            )))
+          } else if (payload.type === 'final') {
+            finalPayload = payload
+            streamed = payload.answer || streamed
+            const mems = Array.isArray(payload.memories) ? payload.memories : memories
+            setMessages(prev => prev.map(msg => (
+              msg.id === assistantId ? {
+                ...msg,
+                content: streamed,
+                isRag: !streamed.toLowerCase().includes('fallback'),
+                isMemory: mems.some(m => streamed.toLowerCase().includes((m || '').split(' ')[0]?.toLowerCase()))
+              } : msg
+            )))
+          } else if (payload.type === 'error') {
+            throw new Error(payload.error || 'Streaming error')
+          }
+        }
       }
-      
-      // Trigger graph data check if open
-      if (graphOpen) {
-        // Redraw Vis.js graph
-        setGraphOpen(false)
-        setTimeout(() => setGraphOpen(true), 50)
+
+      if (finalPayload?.memories) {
+        setMemories(finalPayload.memories)
       }
 
     } catch (err) {
       console.error("Query execution failed:", err)
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "API timeout. The backend server failed to respond in time." 
-      }])
+      setMessages(prev => prev.map(msg => (
+        msg.id === assistantId
+          ? { ...msg, content: "API timeout. The backend server failed to respond in time.", isRag: false, isMemory: false }
+          : msg
+      )))
     } finally {
       setLoading(false)
     }
@@ -280,21 +368,19 @@ export default function AgentWorkspace({ userId, setUserId }) {
         body: formData
       })
       const data = await res.json()
-      if (data.status === 'success') {
-        alert(`Successfully ingested: ${data.indexed_files.join(', ')}. Graph Index updated!`)
-        // Trigger graph redraw
-        if (graphOpen) {
-          setGraphOpen(false)
-          setTimeout(() => setGraphOpen(true), 50)
-        }
+      if (data.status === 'accepted') {
+        setUploadJob({ job_id: data.job_id, status: 'pending', indexed_files: data.indexed_files || [] })
+        alert(`Upload accepted: ${data.indexed_files.join(', ')}. Indexing started in background.`)
       } else {
         alert(data.detail || "Upload failed.")
+        setIndexing(false)
       }
     } catch (err) {
       console.error("Ingestion failed:", err)
       alert("Failed to ingest files.")
-    } finally {
       setIndexing(false)
+    } finally {
+      e.target.value = ''
     }
   }
 
@@ -404,6 +490,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
                   </div>
                 )}
               </label>
+              {uploadJob && (
+                <p className="mt-2 text-[10px] text-cyber-muted font-subheading">
+                  Job <span className="text-cyber-cyan">{uploadJob.job_id?.slice(0, 8)}</span>: {uploadJob.status}
+                </p>
+              )}
             </div>
 
             {/* Health indicators panel */}
