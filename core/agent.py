@@ -38,11 +38,11 @@ _indices_lock = threading.Lock()
 
 
 def _sanitize_user_id(user_id: str) -> str:
-    """Normalize user IDs to a filesystem-safe token."""
+    """Validate user IDs before using them in filesystem paths."""
     raw = (user_id or "default").strip()
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
-    safe = safe.strip("._")
-    return safe or "default"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", raw):
+        raise ValueError("Invalid user_id. Use only letters, numbers, _ or - (max 64 chars).")
+    return raw
 
 
 def _user_documents_dir(user_id: str) -> str:

@@ -97,9 +97,16 @@ def _now_iso() -> str:
 
 def _normalize_user_id(user_id: str) -> str:
     raw = (user_id or "default").strip()
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
-    safe = safe.strip("._")
-    return safe or "default"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", raw):
+        raise ValueError("Invalid user_id. Use only letters, numbers, _ or - (max 64 chars).")
+    return raw
+
+
+def _normalized_or_400(user_id: str) -> str:
+    try:
+        return _normalize_user_id(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _get_user_lock(user_id: str) -> threading.Lock:
@@ -270,7 +277,7 @@ def api_get_memories(user_id: str):
     """Fetch consolidated long-term memory facts for a user from Mem0."""
     if not user_id.strip():
         return {"memories": []}
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
     facts = get_memories(user_id)
     return {"memories": facts}
 
@@ -279,7 +286,7 @@ def api_clear_memories(user_id: str):
     """Clear all Mem0 memory records for a given user profile."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
     success = clear_memories(user_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to clear memories.")
@@ -290,7 +297,7 @@ def api_get_graph(user_id: str):
     """Retrieve node-edge details for Vis.js representation."""
     if not user_id.strip():
         user_id = "default"
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
     # Pre-warm graph index with per-user lock
     with _get_user_lock(user_id):
         get_index(user_id)
@@ -303,7 +310,7 @@ def api_warm_index(user_id: str):
     """Warm a user's graph index cache in the background-safe path."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
     with _get_user_lock(user_id):
         index = get_index(user_id)
     return {"status": "success", "warmed": index is not None}
@@ -313,7 +320,7 @@ def api_query_agent(req: QueryRequest):
     """Perform the 6-step prompt RAG reasoning query loop."""
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(req.user_id)
+    user_id = _normalized_or_400(req.user_id)
     with _get_user_lock(user_id), _set_user_activity(user_id, "querying"):
         add_memory(user_id, req.question)
         mem_lines = get_memories(user_id)
@@ -337,7 +344,7 @@ def api_query_agent_stream(req: QueryRequest):
     """Stream query responses token-by-token for real-time chat rendering."""
     if not req.user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(req.user_id)
+    user_id = _normalized_or_400(req.user_id)
 
     def _format(payload: Dict[str, Any]) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -385,7 +392,7 @@ async def api_upload_files(
     """Ingest PDF/TXT documents into isolated profile folders and rebuild LlamaIndex."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
         
     doc_dir = os.path.join("data", "documents", user_id)
     os.makedirs(doc_dir, exist_ok=True)
@@ -431,7 +438,7 @@ async def api_events(user_id: str):
     """SSE stream for live health, indexing, memory, and graph updates."""
     if not user_id.strip():
         raise HTTPException(status_code=400, detail="User ID is required")
-    user_id = _normalize_user_id(user_id)
+    user_id = _normalized_or_400(user_id)
 
     async def _events():
         init_payload = {
