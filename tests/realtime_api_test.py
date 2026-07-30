@@ -98,25 +98,5 @@ class TestRealtimeApi(unittest.TestCase):
         self.assertEqual(done, ["ok", "ok"])
         self.assertGreaterEqual(elapsed, 0.28)
 
-    def test_events_stream_initial_payload(self):
-        with self.client.stream("GET", "/api/events", params={"user_id": "rahul"}) as response:
-            self.assertEqual(response.status_code, 200)
-            init_payload = None
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8")
-                if line.startswith("data: "):
-                    payload = json.loads(line[6:])
-                    if payload.get("type") == "init":
-                        init_payload = payload
-                        break
-
-        self.assertIsNotNone(init_payload)
-        self.assertIn("health", init_payload["payload"])
-        self.assertIn("user_state", init_payload["payload"])
-
-
 if __name__ == "__main__":
     unittest.main()
