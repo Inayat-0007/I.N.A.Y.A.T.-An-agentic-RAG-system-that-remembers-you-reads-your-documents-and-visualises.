@@ -1,4 +1,9 @@
 ### 1. WHAT IS FULLY DONE (COMPLETED & VERIFIED)
+
+> **SUPERSEDED FOR COUNTS AND STATUS:** Use `README.md` and `STATUS.md` as the single source of truth.
+> This file is a historical snapshot from an earlier audit. Do not use it for test counts,
+> Python version, or feature completeness claims.
+
 - Project scaffolding containing 21 files, `app.py`, `core/`, `tests/`, `warmup.py`, and documentation.
 - Python 3.14.3 virtual environment setup with `requirements.txt` and `constraints.txt`.
 - Google GenAI model integration using `GoogleGenAI` and `GoogleGenAIEmbedding` in `core/llm_setup.py`.

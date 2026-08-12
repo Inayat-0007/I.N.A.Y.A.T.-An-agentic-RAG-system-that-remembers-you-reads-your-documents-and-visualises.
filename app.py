@@ -523,7 +523,10 @@ def main() -> None:
 
         col_img1, col_img2, col_img3 = st.columns([1, 1, 1])
         with col_img2:
-            st.image("assets/logo.png", use_container_width=True)
+            st.markdown(
+                "<div style='font-size:4rem;text-align:center;'>🧠</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown(
             """

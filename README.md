@@ -1,111 +1,100 @@
 <h1 align="center">🧠 I.N.A.Y.A.T.</h1>
 <p align="center">
   <strong>Intelligent Neural Architecture for Yielding Agentic Thinking</strong><br>
-  <em>A State-of-the-Art Agentic RAG System with Isolated Multi-User Memory, Hybrid Knowledge Graphs, and Self-Healing Resilience.</em>
+  <em>Single-agent RAG with isolated user memory, property-graph retrieval, and self-healing resilience.</em>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white" alt="Python Version">
-  <img src="https://img.shields.io/badge/Build-passing-brightgreen" alt="Build Status">
-  <img src="https://img.shields.io/badge/Tests-19%2F19%20passed-success" alt="Tests Passed badge">
+  <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
+  <img src="https://img.shields.io/badge/Tests-36%20smoke%20%2F%2010%20live-success" alt="Tests">
+  <img src="https://img.shields.io/badge/CI-smoke%20only-informational" alt="CI Scope">
   <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
   <br>
-  <img src="https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit UI">
+  <img src="https://img.shields.io/badge/UI-Streamlit%20%2B%20React-FF4B4B" alt="Dual UI">
   <img src="https://img.shields.io/badge/Database-Neo4j-008CC1?logo=neo4j&logoColor=white" alt="Neo4j AuraDB">
   <img src="https://img.shields.io/badge/Memory-Mem0-purple" alt="Mem0 Memory">
-  <img src="https://img.shields.io/badge/LLM-Gemini-4285F4?logo=google-gemini&logoColor=white" alt="Google Gemini">
+  <img src="https://img.shields.io/badge/LLM-Gemini%20Flash%20Lite-4285F4?logo=google-gemini&logoColor=white" alt="Google Gemini">
 </p>
+
+---
+
+## Canonical status (source of truth)
+
+| Fact | Value |
+|------|-------|
+| **Maturity** | Advanced MVP / demo-ready; not hardened production |
+| **Agent model** | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent) |
+| **Python** | 3.12 |
+| **LLM** | `gemini-flash-lite-latest` |
+| **Embeddings** | `gemini-embedding-001` (3072-dim) |
+| **Chunking** | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`) |
+| **Retrieval** | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter |
+| **Tests** | 36 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
+| **CI** | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only |
+| **Docker** | `python:3.12-slim`, Streamlit `:8501`; compose is **one** service |
+| **Seed docs** | None in git — only `data/documents/.gitkeep` |
+| **UIs** | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`) |
+| **Isolation** | Soft: folder + metadata + Mem0 `user_id`; shared Neo4j DB; no auth |
+| **Critical env** | `GEMINI_API_KEY` |
+| **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
+
+See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
 ---
 
 ## 📋 Table of Contents
 
-1. [🧠 Overview](#-overview)
-2. [🔁 System Architecture](#-system-architecture)
-3. [🧩 Capabilities Mind Map](#-capabilities-mind-map)
-4. [⚙️ Tech Stack](#️-tech-stack)
-5. [📂 Project Structure](#-project-structure)
-6. [✨ Key Features](#-key-features)
-7. [🎬 Live Demo Script](#-live-demo-script)
-8. [🛠️ Installation & Launch](#️-installation--launch)
-9. [🧪 Testing Suite](#-testing-suite)
-10. [📄 Technical Documentation](#-technical-documentation)
-11. [🎥 Video Presentation](#-video-presentation)
-12. [🤝 Contributing](#-contributing)
-13. [📜 License](#-license)
+1. [Overview](#-overview)
+2. [System Architecture](#-system-architecture)
+3. [Tech Stack](#️-tech-stack)
+4. [Project Structure](#-project-structure)
+5. [Key Features](#-key-features)
+6. [Installation & Launch](#️-installation--launch)
+7. [Testing Suite](#-testing-suite)
+8. [CI Pipeline](#-ci-pipeline)
+9. [Documentation](#-documentation)
+10. [License](#-license)
 
 ---
 
 ## 🧠 Overview
 
-**I.N.A.Y.A.T.** (Intelligent Neural Architecture for Yielding Agentic Thinking) is an enterprise-grade agentic Retrieval-Augmented Generation (RAG) system. It combines Google Gemini LLMs with isolated long-term user memories and multi-user graph structures. Unlike traditional stateless RAG models, I.N.A.Y.A.T. operates with a persistent context engine that grows with the user. It is built to support production environments where multi-user isolation, high resilience, and interactive knowledge visualizations are mandatory.
+**I.N.A.Y.A.T.** combines Google Gemini, Mem0 long-term memory, and LlamaIndex `PropertyGraphIndex` over Neo4j AuraDB. It is a **single-agent** RAG system with graceful degradation (RAG → LLM → apology) and per-user document folders.
 
-The system addresses three critical limitations of current AI architectures:
-1. **Context Loss:** By incorporating a persistent user-memory loop (via Mem0), it remembers facts, personal preferences, and details across sessions.
-2. **Context Disconnect:** Instead of simple flat vector matching, it indexes documents into entity-relation networks using LlamaIndex PropertyGraphIndex over a live Neo4j AuraDB instance. This enables path-based hybrid queries.
-3. **API Fragility:** Integrated self-healing active circuit breakers protect critical API endpoints, allowing the system to degrade gracefully to direct LLM completion rather than throwing stack traces when databases or cloud memory APIs go offline.
+Upload PDFs or TXT files per profile — the repository does **not** ship scenario PDFs; only `data/documents/.gitkeep` is committed.
 
 ---
 
 ## 🔁 System Architecture
 
-The following diagram illustrates the 6-step agentic execution loop during a user query or document ingestion, demonstrating multi-profile session integrity and isolation:
-
 ```mermaid
 flowchart TD
-    User([User Profile: Moham / Rahul]) -->|1. Inputs Query / Document| App[Streamlit Core app.py]
-    App -->|2. Check Health & Breaker| Health[Resilience & Health Engine]
-    Health -->|3. Fetch User Memories| Mem0[Mem0 Cloud Memory]
-    Health -->|4. Retrieve Isolated Sub-graph| Neo4j[Neo4j AuraDB Graph Store]
-    Mem0 & Neo4j -->|Augmented Context| LLM[Google Gemini LLM Engine]
-    LLM -->|5. Generate Answer| App
-    App -->|6. Save Facts & Update Graph| Mem0 & Neo4j
-```
-
----
-
-## 🧩 Capabilities Mind Map
-
-A structural overview of the system's component relationships, service integrations, and runtime controls:
-
-```mermaid
-mindmap
-  root((I.N.A.Y.A.T. System))
-    Agent Core
-      LlamaIndex PropertyGraph
-      Google Gemini LLM
-      Resilient Fallbacks
-    Long-Term Memory
-      Mem0 Cloud Integration
-      Isolated User Context
-      Fact Auto-Extraction
-    Knowledge Graph
-      Neo4j AuraDB Storage
-      Dynamic Isolated Subgraphs
-      Vis.js Interactive View
-    Resilience Engine
-      Active Circuit Breakers
-      Self-Healing Toggles
-      Health Diagnostics
-    Deployment & Launch
-      PowerShell Activator
-      Dockerized Scaffold
-      Github Actions CI/CD
+    User([User Profile]) -->|Query / Upload| UI[Streamlit app.py or React + api.py]
+    UI --> Health[Health & Circuit Breakers]
+    Health --> Mem0[Mem0 Cloud]
+    Health --> Neo4j[Neo4j AuraDB]
+    Mem0 & Neo4j --> LLM[Gemini Flash Lite]
+    LLM --> UI
 ```
 
 ---
 
 ## ⚙️ Tech Stack
 
-| Component | Technology | Version | Purpose |
+Pinned versions are in [constraints.txt](constraints.txt).
+
+| Component | Technology | Pinned version | Purpose |
 | :--- | :--- | :--- | :--- |
-| **User Interface** | [Streamlit](https://streamlit.io/) | `^1.43.0` | Sleek, glassmorphic UI dashboard |
-| **Graph Store** | [Neo4j AuraDB](https://neo4j.com/) | `^5.0` | Cloud Property Graph Database |
-| **Memory Engine** | [Mem0](https://mem0.ai/) | `^0.1.0` | Persistent personalized memory API |
-| **Language Model** | [Gemini 1.5 Flash](https://deepmind.google/technologies/gemini/) | `gemini-1.5-flash` | Reasoning and text completion |
-| **Framework** | [LlamaIndex](https://www.llamaindex.ai/) | `^0.12.0` | RAG indexing and database adapters |
-| **Visualization** | [Vis.js](https://visjs.org/) | `standalone` | Interactive client-side network graph |
+| **UI (legacy)** | Streamlit | `1.58.0` | Demo dashboard (`app.py`) |
+| **UI (modern)** | React + Vite + FastAPI | see `frontend/` | SPA + REST API |
+| **Graph store** | Neo4j AuraDB | driver `5.28.4` | Property graph storage |
+| **Memory** | Mem0 | `mem0ai==2.0.4` | Persistent user memory |
+| **LLM** | Gemini Flash Lite | `gemini-flash-lite-latest` | Generation |
+| **Embeddings** | Gemini | `gemini-embedding-001` | 3072-dim vectors |
+| **RAG** | LlamaIndex | core `0.14.22` | PropertyGraphIndex |
+| **Visualization** | Vis.js | in frontend | Graph drawer |
+| **Config** | pydantic-settings | `2.12.0` | Typed env settings |
 
 ---
 
@@ -113,145 +102,130 @@ mindmap
 
 ```
 INAYAT/
-├── assets/
-│   └── logo.png                  # Project Brand Asset
+├── app.py                        # Streamlit UI (Docker default)
+├── api.py                        # FastAPI REST + SPA static host
+├── run_spa.py                    # Dev: uvicorn + Vite
+├── warmup.py                     # Service warmup script
+├── activate.ps1                  # Windows one-click launcher
+├── requirements.txt
+├── constraints.txt               # Pinned dependency versions
+├── .env.example
+├── LICENSE
+├── STATUS.md                     # One-page examiner status
+├── WHAT_TO_FIX.md
+├── HOW_TO_FIX.md
 ├── core/
-│   ├── agent.py                  # LlamaIndex RAG, Property Graph indexing & isolation
-│   ├── graph_store.py            # Neo4j connections, user sub-graphs & Vis.js formatting
-│   ├── health.py                 # Automated API & database diagnostics probes
-│   ├── llm_setup.py              # Gemini LLM and embeddings wrappers
-│   ├── logging_config.py         # Thread-safe, standardized structured logs
-│   ├── memory.py                 # Mem0 memory client & circuit breaker
-│   ├── resilience.py             # Active circuit breakers & safe execution blocks
-│   └── startup.py                # Environment checking and bootstrapping
-├── data/
-│   └── documents/                # Isolated document directories (per-user indexing)
+│   ├── settings.py               # Typed env configuration
+│   ├── identity.py               # user_id validation
+│   ├── observability.py          # Span logging
+│   ├── schemas.py                # QueryInput / QueryResult
+│   ├── conversation.py           # Short-term chat buffer
+│   ├── ingest.py                 # Uploads + index lifecycle
+│   ├── agent.py                  # RAG query engine
+│   ├── llm_setup.py              # Gemini LLM + embeddings
+│   ├── memory.py                 # Mem0 client
+│   ├── graph_store.py            # Neo4j + vis payload
+│   ├── resilience.py             # Circuit breakers + retries
+│   ├── health.py                 # HealthMonitor
+│   ├── startup.py                # Boot validation
+│   ├── compat.py                 # Backwards-compat exports
+│   └── logging_config.py
+├── frontend/                     # React SPA (Vite)
+├── data/documents/.gitkeep       # Per-user uploads at runtime
 ├── tests/
-│   ├── smoke_test.py             # Basic service connectivity & imports check (19 tests)
-│   └── backend_feature_test.py   # Full system integration & isolation validation (10 tests)
-├── .github/workflows/
-│   └── ci.yml                    # Automated GitHub Action workflow (Lint & Smoke Test)
-├── app.py                        # Unified Streamlit Workspace
-├── Dockerfile                    # Docker build configuration
-├── docker-compose.yml            # Multi-container local deployment
-├── activate.ps1                  # One-click Windows setup/launch script
-├── warmup.py                     # Standalone diagnostics validator
-├── CONTEXT.md                    # Core architecture design references
-├── MASTER_DEEP_DIVE_REPORT.txt   # Analysis and audit report
-└── README.md                     # This documentation
+│   ├── smoke_test.py             # 36 tests (CI)
+│   └── backend_feature_test.py   # 10 live integration tests
+├── .github/workflows/ci.yml
+├── Dockerfile                    # python:3.12-slim, Streamlit :8501
+└── docker-compose.yml            # Single-container Streamlit app
 ```
 
 ---
 
 ## ✨ Key Features
 
-- **👤 Isolated User Sessions:** Switching profile names in the sidebar immediately loads the user's isolated chat history and files.
-- **📂 Isolated Document Ingestion:** Documents are split into isolated directories (`data/documents/{user_id}/`). Rebuilding the index caches property graphs per-user.
-- **🧠 Persistent Memory via Mem0:** User details, constraints, and instructions are extracted and stored across visits, allowing personal context queries.
-- **🕸️ Graph RAG (Neo4j):** Converts raw documents into entity-relation properties, queried via path-based graph retrieval.
-- **📈 Interactive Vis.js Visualizer:** Displays live Neo4j graphs in a side-by-side layout, including a detailed interactive node drawer and direct "Use in Chat 💬" synchronization.
-- **🛡️ Active Circuit Breakers:** Graceful fallbacks automatically route requests to direct LLMs if Neo4j or Mem0 APIs undergo forced or real failures.
-- **⚡ One-Click PowerShell Activator:** Installs `.venv`, resolves package wheels, runs warmup probes, and launches the app on Port `8501`.
-- **🐳 Container Support:** Full Dockerfile and docker-compose configurations ready for local/cloud deployment.
-
----
-
-## 🎬 Live Demo Script
-
-<details>
-<summary>🔍 Click to expand the Examiner's Live Demo Step-by-Step Script</summary>
-
-### 1. Welcome & Service Health Check
-- Open the application and inspect the **🛡️ Service Health** panel in the sidebar.
-- Show that all connections are `🟢 Connected` (Gemini, Mem0, Neo4j).
-
-### 2. Enter Profile & Add Memory
-- Set the user profile to **Rahul**.
-- Send a message: `"I am a machine learning student. I love NLP and knowledge graphs."`
-- Show the Mem0 persistent memory panel updating with the new facts.
-
-### 3. Session Isolation & Reset
-- Switch the user profile to **Moham**. Notice that the chat history and graph immediately switch to Moham's workspace (or fallback mocks if Moham is new).
-- Switch back to **Rahul** or refresh the browser. Notice the URL maintains `?user=Rahul` and Rahul's chat history/memory returns instantly.
-- Ask: `"What do you know about me?"` to verify Rahul's facts are retrieved.
-
-### 4. Graph Ingestion & Sync
-- Ingest a sample text or PDF document. Wait for the confirmation "Graph Index updated!".
-- View the **Neural Architecture Graph** tab. Click on any node representing a document chunk.
-- Inspect the node attributes in the drawer and click **Use in Chat 💬** to sync the node query immediately into the chat input.
-
-### 5. Resilience Failover Test
-- Turn on **🔥 Force Fail Mem0** in the sidebar.
-- Verify Mem0 health status changes to `🔴 Forced Fail`.
-- Ask a question in chat. The application degrades gracefully, responding via Gemini/Neo4j, without crashes or unhandled stack traces.
-
-</details>
+- **Isolated user sessions** — `data/documents/{user_id}/` + Mem0 `user_id` + metadata filters
+- **Property-graph RAG** — LlamaIndex over Neo4j with LLM fallback
+- **Dual UI** — Streamlit for demos; FastAPI+React for modern API/SPA path
+- **Circuit breakers** — Mem0/Neo4j degradation without crashes (`INAYAT_DEMO_MODE` for toggles)
+- **Async upload API** — `POST /api/upload` returns 202 + job id; poll `/api/index-status`
 
 ---
 
 ## 🛠️ Installation & Launch
 
-### Option A: Native Windows (Recommended)
-Clone the repository and run the PowerShell activator from the root folder:
+### Option A: Native Windows (recommended for demos)
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File activate.ps1
 ```
-This script will:
-1. Initialize the Python virtual environment.
-2. Install dependencies.
-3. Verify environment credentials.
-4. Launch the Streamlit application at `http://localhost:8501`.
 
-### Option B: Docker
-Ensure Docker is installed and running, then start the containers:
+Sets `INAYAT_DEMO_MODE=true`, runs warmup, launches Streamlit at `http://localhost:8501`.
+
+### Option B: Docker (single-container Streamlit app)
+
 ```bash
 docker-compose up --build
 ```
-The app will bind to port `8501`.
+
+Binds port `8501`. Mount `./data` for persistent uploads.
+
+### Option C: FastAPI + React dev
+
+```bash
+pip install -r requirements.txt -c constraints.txt
+python run_spa.py
+```
+
+API on `:8000`, Vite on `:5173`.
+
+Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
 
 ---
 
 ## 🧪 Testing Suite
 
-The repository has two automated test suites covering imports, environment structures, circuit breakers, and core functions:
-
 ```bash
-# Run basic smoke connectivity & module import tests
-.venv\Scripts\python -m unittest tests/smoke_test.py
+# CI smoke suite (36 tests)
+python tests/smoke_test.py
 
-# Run comprehensive integration and isolation tests
-.venv\Scripts\python -m unittest tests/backend_feature_test.py
+# Live integration (10 tests — requires real API keys)
+python tests/backend_feature_test.py
 ```
-*Both suites must pass with `OK` before submitting a pull request.*
+
+Do **not** use pytest for CI; the supported runner is `python tests/smoke_test.py`.
 
 ---
 
-## 📄 Technical Documentation
+## 🔄 CI Pipeline
 
-For details on the project design and examiners briefs, refer to the following committed files:
-- [CONTEXT.md](CONTEXT.md) — Architectural principles, rules, and folder structure.
-- [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) — Comprehensive codebase review and resilience logs.
-- [inayat_project_deep_dive.pdf](inayat_project_deep_dive.pdf) — Academic and presentation-ready architecture report.
-- [inayat_technical_architecture.pdf](inayat_technical_architecture.pdf) — Tech-stack specification schema.
+On push/PR to `main` or `master` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
----
+1. **flake8** — critical errors only (`E9,F63,F7,F82`)
+2. **black** — formatting check
+3. **gitleaks** — secret scan
+4. **smoke tests** — `python tests/smoke_test.py`
 
-## 🎥 Video Presentation
+Does **not** run: `backend_feature_test.py`, Safety audit, frontend build (yet).
 
-*Placeholder: Link your project walk-through video here.*
-[![I.N.A.Y.A.T. Demo Video](https://img.shields.io/badge/YouTube-Video-red?logo=youtube)](https://youtube.com)
+Python **3.12**, installs with `-c constraints.txt`.
 
 ---
 
-## 🤝 Contributing
+## 📄 Documentation
 
-Contributions are welcome! Please follow these guidelines:
-1. Open an issue describing the bug or feature request.
-2. Verify all local tests pass before proposing code modifications.
-3. Open a Pull Request targeting the `master` branch.
+| File | Role |
+|------|------|
+| [README.md](README.md) | This file — install, architecture, canonical facts |
+| [CONTEXT.md](CONTEXT.md) | Contributor module map |
+| [STATUS.md](STATUS.md) | One-page examiner sheet |
+| [WHAT_TO_FIX.md](WHAT_TO_FIX.md) | Issue inventory |
+| [HOW_TO_FIX.md](HOW_TO_FIX.md) | Remediation architecture |
+| [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) | Historical audit (superseded for counts) |
+| [demo_script.md](demo_script.md) | Live presentation script |
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) (if present) or refer to standard MIT terms.
+MIT License — see [LICENSE](LICENSE).
