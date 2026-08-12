@@ -1,6 +1,8 @@
 # WHAT TO FIX — I.N.A.Y.A.T. Complete Issue Inventory
 
 > **Historical inventory:** Mentions of outdated values (`3.14`, `19/19`, `gemini-1.5-flash`, `PyVis`, `HealthStatus`, `17-test`, etc.) below record **issues at inspection time** and are **superseded** by [README.md](README.md) and [STATUS.md](STATUS.md). Do not treat this file as current truth.
+>
+> Punch list D maps to [HOW_TO_FIX.md](HOW_TO_FIX.md): 1–14 → §1; 15–21 → §2/§9; 22–25 → §3; 26–34 → §4; 35–42 → §3.2/§5/§6; 43–46 → §6.3; 47–48 → §7; keep-list E → §0.3. Remediation order §10 is complete.
 
 **Purpose:** Single lossless capture of Copilot’s status report and the Principal Architect deep-dive. This file is analysis only. Remediation lives in `HOW_TO_FIX.md`.
 

@@ -31,13 +31,15 @@
 | **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)                  |
 | **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter                      |
 | **Tests**           | 52 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`)             |
-| **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                             |
+| **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + pip-audit + smoke + frontend build           |
 | **Docker**          | Default SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501`          |
 | **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`                |
 | **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)                           |
 | **Isolation**       | Soft: folder + metadata + Mem0 `user_id`; **shared Neo4j DB**; optional `INAYAT_API_KEY` |
 | **Critical env**    | `GEMINI_API_KEY`                                                                         |
 | **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`                          |
+
+**Examiner one-liner:** I.N.A.Y.A.T. is a single-agent, production-pattern RAG system (Gemini + LlamaIndex PropertyGraphIndex + Neo4j + Mem0) with documented dual UIs, typed config, validated user ids, CI that matches Docker (Python 3.12), and honest test counts (52 smoke on every PR, 10 live on schedule). Isolation is soft multi-tenancy on a shared graph — acceptable for a demo, not a multi-tenant SaaS.
 
 See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
@@ -249,3 +251,7 @@ Python **3.12**, installs with `pip install -r requirements.txt -c constraints.t
 ## 📜 License
 
 MIT License — see [LICENSE](LICENSE).
+
+## Non-goals
+
+Not in this product: LangGraph/CrewAI multi-agent orchestration, per-user Neo4j Aura instances, replacing Mem0 or Neo4j, rewriting Streamlit into React in one commit, or calling optional `INAYAT_API_KEY` “production hardening.”

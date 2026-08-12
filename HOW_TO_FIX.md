@@ -1,6 +1,8 @@
 # HOW TO FIX — I.N.A.Y.A.T. Remediation Architecture
 
 > **Remediation spec (not runtime truth):** Instructions below reference outdated values only where describing fixes. Current status: [README.md](README.md), [STATUS.md](STATUS.md).
+>
+> **Implementation:** `HOW_TO_FIX.md` §1–§13 is **complete** as of 2026-08-13 (order in §10; no LangGraph). Smoke: `python tests/smoke_test.py` (52 tests).
 
 **Companion to:** `WHAT_TO_FIX.md`  
 **Constraint:** Backwards compatible. Do not rip out Streamlit, Mem0, Neo4j, or the existing `query()` contract until a migration path is live.  
@@ -15,37 +17,37 @@ This document is the implementation specification. Every item in `WHAT_TO_FIX.md
 
 ### 0.1 Component boundaries (strict SRP)
 
-| Component | One job | Public interface | Must not do |
-|-----------|---------|------------------|-------------|
-| `core/settings.py` | Load and validate env | `get_settings() -> InayatSettings` | Call Gemini/Neo4j/Mem0 |
-| `core/identity.py` | Sanitize and type `user_id` | `UserId.parse(raw: str) -> UserId` | Persist files or query DBs |
-| `core/observability.py` | Correlate logs + timings | `trace_span(name, **attrs)` | Business logic |
-| `core/llm_setup.py` | LLM + embeddings only | `get_gemini_llm()`, `get_gemini_embedding()`, `configure_llama_settings(settings)` | Index documents |
-| `core/ingest.py` | Filesystem write + index build | `save_uploads()`, `build_index(user_id)` | Answer questions |
-| `core/agent.py` | Retrieve + generate answer | `query(QueryInput) -> QueryResult` | Serve HTTP or Streamlit widgets |
-| `core/memory.py` | Long-term Mem0 only | `add_memory`, `get_memories`, `search_memories`, `clear_memories` | Hold chat transcripts |
-| `core/conversation.py` | Short-term buffer (optional server-side) | `append_turn`, `recent_turns` | Call Mem0 |
-| `core/graph_store.py` | Neo4j driver + vis payload | `run_cypher`, `get_visualization_data` | Call Gemini |
-| `core/resilience.py` | Breaker + retry + safe_execute | existing API + per-service instances | Know about users |
-| `core/health.py` | Probe externals | `HealthMonitor.run_all()` | Mutate breakers |
-| `api.py` | HTTP + auth + static SPA | REST contracts | Embed LlamaIndex internals |
-| `app.py` | Streamlit adapter | Calls `core.*` only | Duplicate RAG logic |
-| `frontend/` | Presentation | Typed fetch wrappers | Invent RAG/memory truth |
+| Component               | One job                                  | Public interface                                                                   | Must not do                     |
+| ----------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------- |
+| `core/settings.py`      | Load and validate env                    | `get_settings() -> InayatSettings`                                                 | Call Gemini/Neo4j/Mem0          |
+| `core/identity.py`      | Sanitize and type `user_id`              | `UserId.parse(raw: str) -> UserId`                                                 | Persist files or query DBs      |
+| `core/observability.py` | Correlate logs + timings                 | `trace_span(name, **attrs)`                                                        | Business logic                  |
+| `core/llm_setup.py`     | LLM + embeddings only                    | `get_gemini_llm()`, `get_gemini_embedding()`, `configure_llama_settings(settings)` | Index documents                 |
+| `core/ingest.py`        | Filesystem write + index build           | `save_uploads()`, `build_index(user_id)`                                           | Answer questions                |
+| `core/agent.py`         | Retrieve + generate answer               | `query(QueryInput) -> QueryResult`                                                 | Serve HTTP or Streamlit widgets |
+| `core/memory.py`        | Long-term Mem0 only                      | `add_memory`, `get_memories`, `search_memories`, `clear_memories`                  | Hold chat transcripts           |
+| `core/conversation.py`  | Short-term buffer (optional server-side) | `append_turn`, `recent_turns`                                                      | Call Mem0                       |
+| `core/graph_store.py`   | Neo4j driver + vis payload               | `run_cypher`, `get_visualization_data`                                             | Call Gemini                     |
+| `core/resilience.py`    | Breaker + retry + safe_execute           | existing API + per-service instances                                               | Know about users                |
+| `core/health.py`        | Probe externals                          | `HealthMonitor.run_all()`                                                          | Mutate breakers                 |
+| `api.py`                | HTTP + auth + static SPA                 | REST contracts                                                                     | Embed LlamaIndex internals      |
+| `app.py`                | Streamlit adapter                        | Calls `core.*` only                                                                | Duplicate RAG logic             |
+| `frontend/`             | Presentation                             | Typed fetch wrappers                                                               | Invent RAG/memory truth         |
 
 ### 0.2 Failure design (up front)
 
-| Failure | Bottleneck | Default | User-visible result |
-|---------|------------|---------|---------------------|
-| Missing `GEMINI_API_KEY` | Boot | Refuse start | Clear error, process exit 1 |
-| Gemini timeout / 429 | Network | 6× exponential backoff then fallback string | Apology or last-good LLM text |
-| Neo4j down | Network / Aura sleep | Circuit OPEN after 3 fails | RAG skipped; Gemini-only answer; vis `is_mock` |
-| Mem0 down | Network | Circuit OPEN after 3 fails | Empty memories; answer still produced |
-| Upload of 50 MB PDF | Memory / CPU | Reject > configured max bytes; index in background thread | `202 Accepted` + job id (API); Streamlit spinner kept |
-| Concurrent index builds same user | Concurrency | Per-user lock (already `_indices_lock`; extend to per-user) | Second request waits or returns `409 indexing` |
-| Path-traversal `user_id` | Input | Reject at `UserId.parse` | HTTP 400 / Streamlit error |
-| Cross-user graph hop leak | Data model | Vis Cypher constrained to `user_id` on **all** returned nodes | No unlabeled Entity without user tag |
-| Forced breaker toggle | Demo | Keep `forced_open` but require `INAYAT_DEMO_MODE=true` | 403 if demo mode off |
-| Dual UI drift | Product | Shared `QueryResult` schema | Both UIs consume same fields |
+| Failure                           | Bottleneck           | Default                                                       | User-visible result                                   |
+| --------------------------------- | -------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| Missing `GEMINI_API_KEY`          | Boot                 | Refuse start                                                  | Clear error, process exit 1                           |
+| Gemini timeout / 429              | Network              | 6× exponential backoff then fallback string                   | Apology or last-good LLM text                         |
+| Neo4j down                        | Network / Aura sleep | Circuit OPEN after 3 fails                                    | RAG skipped; Gemini-only answer; vis `is_mock`        |
+| Mem0 down                         | Network              | Circuit OPEN after 3 fails                                    | Empty memories; answer still produced                 |
+| Upload of 50 MB PDF               | Memory / CPU         | Reject > configured max bytes; index in background thread     | `202 Accepted` + job id (API); Streamlit spinner kept |
+| Concurrent index builds same user | Concurrency          | Per-user lock (already `_indices_lock`; extend to per-user)   | Second request waits or returns `409 indexing`        |
+| Path-traversal `user_id`          | Input                | Reject at `UserId.parse`                                      | HTTP 400 / Streamlit error                            |
+| Cross-user graph hop leak         | Data model           | Vis Cypher constrained to `user_id` on **all** returned nodes | No unlabeled Entity without user tag                  |
+| Forced breaker toggle             | Demo                 | Keep `forced_open` but require `INAYAT_DEMO_MODE=true`        | 403 if demo mode off                                  |
+| Dual UI drift                     | Product              | Shared `QueryResult` schema                                   | Both UIs consume same fields                          |
 
 ### 0.3 Backwards compatibility rules
 
@@ -61,34 +63,34 @@ This document is the implementation specification. Every item in `WHAT_TO_FIX.md
 
 ### 1.1 Canonical facts (copy these into README; delete contradictions)
 
-| Fact | Canonical value |
-|------|-----------------|
-| Maturity | Advanced MVP / demo-ready; not hardened production |
-| Agent model | **Single-agent RAG pipeline** (not LangGraph/CrewAI multi-agent) |
-| Python | **3.12** |
-| LLM | `gemini-flash-lite-latest` |
-| Embeddings | `gemini-embedding-001` (3072-dim) |
-| Chunking | size 512, overlap 64 (env-overridable after §3) |
-| Retrieval | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter |
-| Tests | **21** smoke (`tests/smoke_test.py`) + **10** live integration (`tests/backend_feature_test.py`) = **31** |
-| CI | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests; **does not** run backend_feature_test on every PR |
-| Docker | `python:3.12-slim`, Streamlit `:8501` **today**; compose is **one** service |
-| Seed docs | **None in git** — only `data/documents/.gitkeep` |
-| UIs | Streamlit (`app.py`) **and** FastAPI+React (`api.py`, `frontend/`) |
-| Isolation | Soft: folder + metadata + Mem0 `user_id`; **shared Neo4j DB**; **no auth** |
-| Critical env | `GEMINI_API_KEY` only |
-| Recommended env | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
+| Fact            | Canonical value                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| Maturity        | Advanced MVP / demo-ready; not hardened production                                                         |
+| Agent model     | **Single-agent RAG pipeline** (not LangGraph/CrewAI multi-agent)                                           |
+| Python          | **3.12**                                                                                                   |
+| LLM             | `gemini-flash-lite-latest`                                                                                 |
+| Embeddings      | `gemini-embedding-001` (3072-dim)                                                                          |
+| Chunking        | size 512, overlap 64 (env-overridable after §3)                                                            |
+| Retrieval       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter                                        |
+| Tests           | **21** smoke (`tests/smoke_test.py`) + **10** live integration (`tests/backend_feature_test.py`) = **31**  |
+| CI              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests; **does not** run backend_feature_test on every PR |
+| Docker          | `python:3.12-slim`, Streamlit `:8501` **today**; compose is **one** service                                |
+| Seed docs       | **None in git** — only `data/documents/.gitkeep`                                                           |
+| UIs             | Streamlit (`app.py`) **and** FastAPI+React (`api.py`, `frontend/`)                                         |
+| Isolation       | Soft: folder + metadata + Mem0 `user_id`; **shared Neo4j DB**; **no auth**                                 |
+| Critical env    | `GEMINI_API_KEY` only                                                                                      |
+| Recommended env | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`                                            |
 
 ### 1.2 File roles after cleanup
 
-| File | Role |
-|------|------|
-| `README.md` | Install, run, architecture diagram, **canonical facts table** |
-| `CONTEXT.md` | Contributor map of modules (must match tree) |
+| File                          | Role                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `README.md`                   | Install, run, architecture diagram, **canonical facts table**                                               |
+| `CONTEXT.md`                  | Contributor map of modules (must match tree)                                                                |
 | `MASTER_DEEP_DIVE_REPORT.txt` | Historical snapshot **or** add a banner: “Superseded by README canonical facts; do not use for test counts” |
-| `WHAT_TO_FIX.md` | Issue inventory (this work) |
-| `HOW_TO_FIX.md` | This spec |
-| `STATUS.md` | One-page examiner sheet generated from the canonical table |
+| `WHAT_TO_FIX.md`              | Issue inventory (this work)                                                                                 |
+| `HOW_TO_FIX.md`               | This spec                                                                                                   |
+| `STATUS.md`                   | One-page examiner sheet generated from the canonical table                                                  |
 
 ### 1.3 README edits (exact)
 
@@ -179,24 +181,24 @@ Introduce `InayatSettings` (Pydantic v2 `BaseSettings`) loaded once.
 
 **Fields and defaults (all env-driven, zero hardcoded secrets):**
 
-| Field | Env | Default | Notes |
-|-------|-----|---------|-------|
-| `gemini_api_key` | `GEMINI_API_KEY` | required | Secret |
-| `mem0_api_key` | `MEM0_API_KEY` | `""` | Optional |
-| `neo4j_uri` | `NEO4J_URI` | `""` | Optional |
-| `neo4j_username` | `NEO4J_USERNAME` | `"neo4j"` | Not a secret by itself |
-| `neo4j_password` | `NEO4J_PASSWORD` | `""` | Secret |
-| `llm_model` | `INAYAT_LLM_MODEL` | `gemini-flash-lite-latest` | Replaces `_MODEL_NAME` |
-| `embed_model` | `INAYAT_EMBED_MODEL` | `gemini-embedding-001` | |
-| `chunk_size` | `INAYAT_CHUNK_SIZE` | `512` | |
-| `chunk_overlap` | `INAYAT_CHUNK_OVERLAP` | `64` | Must be `< chunk_size` |
-| `similarity_top_k` | `INAYAT_TOP_K` | `5` | |
-| `mmr_enabled` | `INAYAT_MMR_ENABLED` | `false` | Feature flag |
-| `mmr_lambda` | `INAYAT_MMR_LAMBDA` | `0.7` | |
-| `max_upload_bytes` | `INAYAT_MAX_UPLOAD_BYTES` | `10485760` | 10 MiB |
-| `demo_mode` | `INAYAT_DEMO_MODE` | `false` | Gates breaker toggle |
-| `cors_origins` | `INAYAT_CORS_ORIGINS` | `http://localhost:5173,http://localhost:8000` | Comma-separated |
-| `log_level` | `INAYAT_LOG_LEVEL` | `INFO` | |
+| Field              | Env                       | Default                                       | Notes                  |
+| ------------------ | ------------------------- | --------------------------------------------- | ---------------------- |
+| `gemini_api_key`   | `GEMINI_API_KEY`          | required                                      | Secret                 |
+| `mem0_api_key`     | `MEM0_API_KEY`            | `""`                                          | Optional               |
+| `neo4j_uri`        | `NEO4J_URI`               | `""`                                          | Optional               |
+| `neo4j_username`   | `NEO4J_USERNAME`          | `"neo4j"`                                     | Not a secret by itself |
+| `neo4j_password`   | `NEO4J_PASSWORD`          | `""`                                          | Secret                 |
+| `llm_model`        | `INAYAT_LLM_MODEL`        | `gemini-flash-lite-latest`                    | Replaces `_MODEL_NAME` |
+| `embed_model`      | `INAYAT_EMBED_MODEL`      | `gemini-embedding-001`                        |                        |
+| `chunk_size`       | `INAYAT_CHUNK_SIZE`       | `512`                                         |                        |
+| `chunk_overlap`    | `INAYAT_CHUNK_OVERLAP`    | `64`                                          | Must be `< chunk_size` |
+| `similarity_top_k` | `INAYAT_TOP_K`            | `5`                                           |                        |
+| `mmr_enabled`      | `INAYAT_MMR_ENABLED`      | `false`                                       | Feature flag           |
+| `mmr_lambda`       | `INAYAT_MMR_LAMBDA`       | `0.7`                                         |                        |
+| `max_upload_bytes` | `INAYAT_MAX_UPLOAD_BYTES` | `10485760`                                    | 10 MiB                 |
+| `demo_mode`        | `INAYAT_DEMO_MODE`        | `false`                                       | Gates breaker toggle   |
+| `cors_origins`     | `INAYAT_CORS_ORIGINS`     | `http://localhost:5173,http://localhost:8000` | Comma-separated        |
+| `log_level`        | `INAYAT_LOG_LEVEL`        | `INFO`                                        |                        |
 
 **Validator:** `chunk_overlap < chunk_size`.  
 **Access:** `get_settings()` cached; tests inject via env then cache_clear.
@@ -219,6 +221,7 @@ UserId rules:
 `UserId.parse(raw) -> UserId` raises `InvalidUserId` (subclass of `ValueError`).
 
 **Call sites (all of them):**
+
 - `api.py` query, upload, memories, graph
 - `app.py` profile name / query param
 - `core/agent.py` directory join
@@ -251,17 +254,18 @@ def query(question: str, user_id: str = "default", memory_context: str = "") -> 
 
 ### 4.1 Short-term vs long-term (agentic standard)
 
-| Store | Contents | TTL | Owner |
-|-------|----------|-----|-------|
-| UI / optional `core/conversation.py` | Last N chat turns | Session | Presentation |
-| Mem0 | Extracted facts, not raw dumps | Durable | `memory.py` |
-| Neo4j | Chunks + entities from **documents** | Durable | `graph_store` + ingest |
+| Store                                | Contents                             | TTL     | Owner                  |
+| ------------------------------------ | ------------------------------------ | ------- | ---------------------- |
+| UI / optional `core/conversation.py` | Last N chat turns                    | Session | Presentation           |
+| Mem0                                 | Extracted facts, not raw dumps       | Durable | `memory.py`            |
+| Neo4j                                | Chunks + entities from **documents** | Durable | `graph_store` + ingest |
 
 **Change Mem0 write path without breaking add_memory signature:**
 
 Keep `add_memory(user_id, text)`. Change the **caller** (api + app) to pass a compact fact line, not the entire utterance, **or** add `add_memory(user_id, text, *, kind="utterance"|"fact")` defaulting to `"utterance"` for compatibility.
 
 Preferred compatible behavior:
+
 1. Still call `add_memory` with the user message (existing tests / Mem0 demo keep working).
 2. Additionally call `search_memories(user_id, question, limit=5)` and merge with `get_memories` (cap total chars via settings, e.g. 2000) so search is on the hot path.
 
@@ -303,6 +307,7 @@ Streamlit keeps sync ingest (spinner). No behavior change for the demo script un
 ### 4.6 Disclaimer gate
 
 Keep the phrase list but:
+
 - Only trigger fallback if `source_nodes` is empty **or** (phrases match **and** `source_count == 0`).
 - If sources exist, return RAG answer even if the model hedges. This cuts false fallbacks.
 
@@ -317,6 +322,7 @@ Expose `route` so examiners can see RAG vs LLM.
 Current: `MATCH (c:Chunk {user_id: $user_id})` plus 1–2 hop neighbors.
 
 **Fix:** Return a neighbor only if:
+
 - it is a `Chunk` with the same `user_id`, or
 - it is an `Entity` **and** every connected `Chunk` in the result set has that `user_id`, or
 - strip neighbors that have a different `user_id` property.
@@ -336,6 +342,7 @@ Production follow-on (separate epic): `user_id` on every node at write time (Lla
 Do not silently change to per-user breakers (would hide real outages).
 
 Changes:
+
 1. `forced_open` writes allowed only if `settings.demo_mode` is true (API 403 otherwise). Streamlit checkboxes same gate.
 2. Log `breaker_state` + service name on every transition.
 3. Keep one breaker per **service** (Mem0, Neo4j) — that is correct for shared cloud outages.
@@ -355,6 +362,7 @@ Replace `allow_origins=["*"]` + `allow_credentials=True` with `allow_origins=set
 ### 6.2 Auth (minimal, backwards compatible)
 
 Add optional `INAYAT_API_KEY`. If empty, current open demo behavior remains. If set:
+
 - Require header `X-INAYAT-KEY` on mutating routes (`/api/query`, `/api/upload`, `/api/memories/clear`, `/api/health/toggle`).
 - Streamlit reads the same env and sends the header if you later point it at the API; while Streamlit talks to `core` in-process, the key is unused (in-process is already trusted).
 
@@ -367,13 +375,14 @@ This is not multi-user auth. It stops anonymous internet scrape of Mem0 when the
 ```yaml
 # docker-compose.yml
 services:
-  inayat-streamlit:   # default, current CMD
-  inayat-spa:         # build frontend, CMD uvicorn api:app --host 0.0.0.0 --port 8000
+  inayat-streamlit: # default, current CMD
+  inayat-spa: # build frontend, CMD uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
 **Phase 2:** Default profile `spa`. README “quick start” uses SPA. Streamlit remains `docker compose --profile streamlit up`.
 
 SPA image must:
+
 - `npm ci && npm run build` in a multi-stage Dockerfile **or** copy prebuilt `frontend/dist`
 - Expose 8000
 - Healthcheck `GET /api/health` not Streamlit `/_stcore/health`
@@ -402,6 +411,7 @@ Wire into `query_detailed` and `api.py`. Existing `logging_config.py` rotating f
 ## 8. Frontend contract updates
 
 `AgentWorkspace.jsx`:
+
 - Read `route`, `used_memory`, `source_count` from `/api/query`
 - Stop inferring RAG from answer text
 - Upload: if async ingest is off (default), keep current wait-for-200 behavior
@@ -439,6 +449,7 @@ Update smoke count in README after adding these. Count methods with the same `de
 ### 9.4 API tests (optional file `tests/test_api_contract.py`)
 
 Use FastAPI `TestClient`:
+
 - invalid user_id → 400
 - toggle breaker without demo mode → 403
 - CORS: disallowed origin not reflected (when origins are explicit)
@@ -449,21 +460,21 @@ Use FastAPI `TestClient`:
 
 Each step must leave the app bootable.
 
-| Step | Work | Compatibility |
-|------|------|----------------|
-| 1 | Canonical docs + STATUS.md + LICENSE or badge fix + logo or remove ref | Docs only |
-| 2 | Seed PDF Option A or skipUnless Option B | Tests |
-| 3 | CI Python 3.12 + constraints + frontend-build job | CI |
-| 4 | `settings.py` + wire `llm_setup` chunk/model | Behavior same at defaults |
-| 5 | `identity.py` + sanitize all path/API user_ids | Invalid names start failing (intended) |
-| 6 | `QueryResult` + wrapper `query()` + API/frontend badges | Additive JSON fields |
-| 7 | `search_memories` on hot path with fallback | Better memory; still works if Mem0 down |
-| 8 | Vis Cypher user filter tightening | Safer graph |
-| 9 | FastAPI lifespan health + CORS origins + demo_mode gate | Demo script needs `INAYAT_DEMO_MODE=true` |
-| 10 | Optional API key | Off by default |
-| 11 | Compose spa profile + Dockerfile stage | Streamlit still default until you flip |
-| 12 | MMR flag, async ingest flag | Off by default |
-| 13 | Observability fields | Logs only |
+| Step | Work                                                                   | Compatibility                             |
+| ---- | ---------------------------------------------------------------------- | ----------------------------------------- |
+| 1    | Canonical docs + STATUS.md + LICENSE or badge fix + logo or remove ref | Docs only                                 |
+| 2    | Seed PDF Option A or skipUnless Option B                               | Tests                                     |
+| 3    | CI Python 3.12 + constraints + frontend-build job                      | CI                                        |
+| 4    | `settings.py` + wire `llm_setup` chunk/model                           | Behavior same at defaults                 |
+| 5    | `identity.py` + sanitize all path/API user_ids                         | Invalid names start failing (intended)    |
+| 6    | `QueryResult` + wrapper `query()` + API/frontend badges                | Additive JSON fields                      |
+| 7    | `search_memories` on hot path with fallback                            | Better memory; still works if Mem0 down   |
+| 8    | Vis Cypher user filter tightening                                      | Safer graph                               |
+| 9    | FastAPI lifespan health + CORS origins + demo_mode gate                | Demo script needs `INAYAT_DEMO_MODE=true` |
+| 10   | Optional API key                                                       | Off by default                            |
+| 11   | Compose spa profile + Dockerfile stage                                 | Streamlit still default until you flip    |
+| 12   | MMR flag, async ingest flag                                            | Off by default                            |
+| 13   | Observability fields                                                   | Logs only                                 |
 
 **Do not** start with multi-agent LangGraph. That is a new product, not a fix.
 
@@ -471,22 +482,24 @@ Each step must leave the app bootable.
 
 ## 11. Mapping: WHAT_TO_FIX punch list → this spec
 
-| # | Item | Section |
-|---|------|---------|
-| 1–14 | Documentation & truth | §1 |
-| 15–21 | Testing & CI | §2, §9 |
-| 22–25 | Config & typing | §3 |
-| 26–34 | RAG / memory / agent | §4 |
-| 35–42 | Isolation & security | §3.2, §5, §6 |
-| 43–46 | Deployment | §6.3 |
-| 47–48 | Observability | §7 |
-| Keep-list E | Do not delete core modules | §0.3 |
+| #           | Item                       | Section      |
+| ----------- | -------------------------- | ------------ |
+| 1–14        | Documentation & truth      | §1           |
+| 15–21       | Testing & CI               | §2, §9       |
+| 22–25       | Config & typing            | §3           |
+| 26–34       | RAG / memory / agent       | §4           |
+| 35–42       | Isolation & security       | §3.2, §5, §6 |
+| 43–46       | Deployment                 | §6.3         |
+| 47–48       | Observability              | §7           |
+| Keep-list E | Do not delete core modules | §0.3         |
 
 ---
 
 ## 12. Examiner one-liner (after fixes)
 
-I.N.A.Y.A.T. is a **single-agent, production-pattern RAG system** (Gemini + LlamaIndex PropertyGraphIndex + Neo4j + Mem0) with **documented** dual UIs, **typed** config, **validated** user ids, **CI that matches Docker (Python 3.12)**, and **honest** test counts (21 smoke on every PR, 10 live on schedule). Isolation is **soft multi-tenancy** on a shared graph, which is acceptable for a demo and explicitly not a multi-tenant SaaS.
+I.N.A.Y.A.T. is a **single-agent, production-pattern RAG system** (Gemini + LlamaIndex PropertyGraphIndex + Neo4j + Mem0) with **documented** dual UIs, **typed** config, **validated** user ids, **CI that matches Docker (Python 3.12)**, and **honest** test counts (**52 smoke** on every PR, **10 live** on schedule). Isolation is **soft multi-tenancy** on a shared graph, which is acceptable for a demo and explicitly not a multi-tenant SaaS.
+
+(The “21 smoke” figure in earlier drafts is superseded; count `def test_` methods in `tests/smoke_test.py`.)
 
 ---
 

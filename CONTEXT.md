@@ -57,8 +57,8 @@
 
 | File           | Role                           |
 | -------------- | ------------------------------ |
-| `app.py`       | Streamlit UI (Docker default)  |
-| `api.py`       | FastAPI REST + `frontend/dist` |
+| `app.py`       | Streamlit UI (`--profile streamlit`) |
+| `api.py`       | FastAPI REST + `frontend/dist` (Docker default `:8000`) |
 | `run_spa.py`   | Local dual-server dev          |
 | `warmup.py`    | Neo4j keepalive + health       |
 | `activate.ps1` | Windows launcher               |
@@ -121,5 +121,9 @@ See `.env.example` for `INAYAT_*` tuning keys.
 ## Related docs
 
 - [WHAT_TO_FIX.md](WHAT_TO_FIX.md) — issue inventory
-- [HOW_TO_FIX.md](HOW_TO_FIX.md) — remediation spec
+- [HOW_TO_FIX.md](HOW_TO_FIX.md) — remediation spec (§10 order complete; see STATUS.md)
 - [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) — historical (superseded for counts)
+
+## Non-goals
+
+LangGraph/CrewAI, per-user Aura DBs, Mem0/Neo4j replacement, Streamlit→React rewrite in one commit, production-hardening claims while auth is optional.
