@@ -172,6 +172,7 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(settings.chunk_overlap, 64)
         self.assertFalse(settings.allow_empty_from_existing)
         self.assertTrue(settings.sync_ingest)
+        self.assertEqual(settings.api_key, "")
 
     def test_chunk_overlap_must_be_less_than_chunk_size(self) -> None:
         from pydantic import ValidationError
@@ -343,6 +344,44 @@ class TestFailureDesign(unittest.TestCase):
             _node_allowed_for_user(["Chunk"], {"user_id": "bob"}, "alice")
         )
         self.assertTrue(_node_allowed_for_user(["Entity"], {}, "alice"))
+        self.assertFalse(
+            _node_allowed_for_user(["Entity"], {"user_id": "bob"}, "alice")
+        )
+
+    def test_assemble_strips_foreign_chunks(self) -> None:
+        from core.graph_store import _assemble_visualization
+
+        records = [
+            {
+                "source_id": "c1",
+                "source_name": "Alice chunk",
+                "source_labels": ["Chunk"],
+                "source_props": {"user_id": "alice", "file_name": "a.pdf"},
+                "target_id": "e1",
+                "target_name": "SharedEntity",
+                "target_labels": ["Entity"],
+                "target_props": {},
+                "rel_type": "MENTIONS",
+                "rel_props": {},
+            },
+            {
+                "source_id": "c2",
+                "source_name": "Bob chunk",
+                "source_labels": ["Chunk"],
+                "source_props": {"user_id": "bob", "file_name": "b.pdf"},
+                "target_id": "e1",
+                "target_name": "SharedEntity",
+                "target_labels": ["Entity"],
+                "target_props": {},
+                "rel_type": "MENTIONS",
+                "rel_props": {},
+            },
+        ]
+        graph = _assemble_visualization(records, "alice")
+        ids = {n["id"] for n in graph["nodes"]}
+        self.assertIn("c1", ids)
+        self.assertNotIn("c2", ids)
+        self.assertNotIn("e1", ids)
 
     def test_index_build_in_progress(self) -> None:
         from core import ingest as ingest_mod
@@ -521,6 +560,11 @@ class TestIngestIsolation(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             save_uploads("default", [("not.pdf", b"this is not a pdf")])
         self.assertIn("valid PDF", str(ctx.exception))
+
+    def test_user_has_documents_false_for_empty_profile(self) -> None:
+        from core.ingest import user_has_documents
+
+        self.assertFalse(user_has_documents("no_such_profile_xyz"))
 
 
 if __name__ == "__main__":

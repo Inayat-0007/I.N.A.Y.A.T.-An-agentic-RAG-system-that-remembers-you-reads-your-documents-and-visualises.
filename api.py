@@ -7,12 +7,13 @@ HTTP adapter only: maps REST routes to ``core.*`` modules.
 import logging
 import mimetypes
 import os
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from core.agent import query_detailed
 from core.conversation import append_turn
 from core.exceptions import IndexBuildInProgress
-from core.graph_store import get_visualization_data
+from core.graph_store import close_driver, get_visualization_data
 from core.identity import InvalidUserId, UserId
 from core.ingest import (
     build_index,
@@ -34,7 +35,7 @@ from core.memory import add_memory, build_memory_context, clear_memories, get_me
 from core.observability import set_request_id
 from core.schemas import QueryInput, QueryResult
 from core.settings import get_settings
-from core.startup import load_env, validate_env
+from core.startup import load_env, run_startup, validate_env
 from core.health import HealthMonitor
 from core.resilience import DemoModeRequired, set_breaker_forced_open
 import core.memory as mem
@@ -57,19 +58,66 @@ except ValidationError:
     _settings = None
     _cors_origins = ["http://localhost:5173", "http://localhost:8000"]
 
+_MUTATING_PREFIXES = (
+    "/api/query",
+    "/api/upload",
+    "/api/memories/clear",
+    "/api/health/toggle",
+)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Boot health sweep + Neo4j driver cleanup (parity with Streamlit)."""
+    global _ok, _health, _warnings
+    ok, health, warnings = run_startup()
+    _ok = ok
+    if health:
+        _health = health
+    _warnings = warnings
+    yield
+    close_driver()
+
+
 app = FastAPI(
     title="I.N.A.Y.A.T. API",
     description="Futuristic REST API layer for I.N.A.Y.A.T. RAG & Agentic Memory",
     version="2026.2.0",
+    lifespan=lifespan,
 )
 
+_cors_wildcard = any(origin.strip() == "*" for origin in _cors_origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if _cors_wildcard else _cors_origins,
+    allow_credentials=not _cors_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def api_key_guard(request: Request, call_next):
+    """Require X-INAYAT-KEY on mutating routes when INAYAT_API_KEY is set."""
+    path = request.url.path
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and any(
+        path == prefix or path.startswith(prefix + "/") for prefix in _MUTATING_PREFIXES
+    ):
+        expected = ""
+        try:
+            expected = get_settings().api_key.strip()
+        except Exception:
+            expected = ""
+        if expected:
+            provided = request.headers.get("X-INAYAT-KEY", "")
+            if provided != expected:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": "Missing or invalid X-INAYAT-KEY header.",
+                    },
+                )
+    return await call_next(request)
 
 
 class QueryRequest(BaseModel):

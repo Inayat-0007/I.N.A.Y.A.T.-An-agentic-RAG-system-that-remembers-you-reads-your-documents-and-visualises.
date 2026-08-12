@@ -235,7 +235,7 @@ export default function LandingPage({ onEnterWorkspace }) {
         >
           <div className="flex flex-col items-center p-3 rounded-xl bg-white/[0.02] border border-cyber-border/20">
             <span className="font-heading font-extrabold text-2xl text-cyber-cyan text-glow-cyan">
-              44
+              46
             </span>
             <span className="text-xs text-cyber-muted font-subheading mt-1">
               Smoke Tests (CI)

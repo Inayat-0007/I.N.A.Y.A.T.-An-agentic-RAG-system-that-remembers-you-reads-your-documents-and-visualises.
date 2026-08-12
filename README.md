@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
-  <img src="https://img.shields.io/badge/Tests-44%20smoke%20%2F%2010%20live-success" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-46%20smoke%20%2F%2010%20live-success" alt="Tests">
   <img src="https://img.shields.io/badge/CI-smoke%20%2B%20frontend-informational" alt="CI Scope">
   <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
@@ -30,12 +30,12 @@
 | **Embeddings**      | `gemini-embedding-001` (3072-dim)                                            |
 | **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)      |
 | **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
-| **Tests**           | 44 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
+| **Tests**           | 46 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
 | **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                 |
-| **Docker**          | `python:3.12-slim`, Streamlit `:8501`; compose is **one** service            |
+| **Docker**          | Default SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501` |
 | **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`    |
 | **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)               |
-| **Isolation**       | Soft: folder + metadata + Mem0 `user_id`; shared Neo4j DB; no auth           |
+| **Isolation**       | Soft: folder + metadata + Mem0 `user_id`; **shared Neo4j DB**; optional `INAYAT_API_KEY` |
 | **Critical env**    | `GEMINI_API_KEY`                                                             |
 | **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`              |
 
@@ -136,18 +136,19 @@ INAYAT/
 │       ├── .gitkeep              # Per-user uploads at runtime
 │       └── _samples/             # MIT sample PDFs (copy to {your_name}/)
 ├── tests/
-│   ├── smoke_test.py             # 44 tests (CI)
+│   ├── smoke_test.py             # 46 tests (CI)
 │   └── backend_feature_test.py   # 10 live integration tests
 ├── .github/workflows/ci.yml
-├── Dockerfile                    # python:3.12-slim, Streamlit :8501
-└── docker-compose.yml            # Single-container Streamlit app
+├── Dockerfile                    # Streamlit :8501
+├── Dockerfile.spa                # Multi-stage Vite + uvicorn :8000
+└── docker-compose.yml            # Default SPA; --profile streamlit
 ```
 
 ---
 
 ## ✨ Key Features
 
-- **Isolated user sessions** — `data/documents/{user_id}/` + Mem0 `user_id` + metadata filters
+- **Isolated user sessions** — `data/documents/{user_id}/` + Mem0 `user_id` + metadata filters on a **shared Neo4j database** (not per-user Aura instances). Isolation is demo-grade metadata, not multi-tenant SaaS. Production follow-on: stamp `user_id` on entity nodes at write time.
 - **Property-graph RAG** — LlamaIndex `PropertyGraphIndex` over Neo4j (graph + vector). There is **no separate BM25 index**; hybrid BM25 is a later epic.
 - **MMR retrieval** — off by default (`INAYAT_MMR_ENABLED=false`); when on, falls back to `similarity_top_k` if LlamaIndex rejects MMR kwargs
 - **Chunking** — `INAYAT_CHUNK_SIZE` / `INAYAT_CHUNK_OVERLAP` (defaults 512/64). **Re-upload / rebuild the index after changing chunk settings** — existing Neo4j nodes are not rewritten.
@@ -168,13 +169,23 @@ powershell -ExecutionPolicy Bypass -File activate.ps1
 
 Sets `INAYAT_DEMO_MODE=true`, runs warmup, launches Streamlit at `http://localhost:8501`.
 
-### Option B: Docker (single-container Streamlit app)
+### Option B: Docker (default = SPA on :8000)
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-Binds port `8501`. Mount `./data` for persistent uploads.
+Serves FastAPI + built React at `http://localhost:8000`. Healthcheck: `GET /api/health`. Data volume `./data`.
+
+Streamlit (legacy demo UI):
+
+```bash
+docker compose --profile streamlit up --build
+```
+
+Binds `8501`. Images: `Dockerfile.spa` (multi-stage npm build) and `Dockerfile` (Streamlit).
+
+Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required). Optional `INAYAT_API_KEY` gates mutating `/api/*` routes via `X-INAYAT-KEY`.
 
 ### Option C: FastAPI + React dev
 
@@ -192,7 +203,7 @@ Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
 ## 🧪 Testing Suite
 
 ```bash
-# CI smoke suite (44 tests)
+# CI smoke suite (46 tests)
 python tests/smoke_test.py
 
 # Live integration (10 tests — requires real API keys)
@@ -211,7 +222,7 @@ On push/PR to `main` or `master` (see [.github/workflows/ci.yml](.github/workflo
 2. **black** — formatting check
 3. **gitleaks** — secret scan
 4. **pip-audit** — dependency vulnerability scan
-5. **smoke tests** — `python tests/smoke_test.py` (44 tests)
+5. **smoke tests** — `python tests/smoke_test.py` (46 tests)
 
 **frontend-build** job (parallel): `npm ci` + `npm run build` in `frontend/`.
 

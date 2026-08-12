@@ -13,13 +13,13 @@
 | **Embeddings**       | `gemini-embedding-001` (3072-dim)                                            |
 | **Chunking**         | size 512, overlap 64 (`INAYAT_CHUNK_SIZE` / `INAYAT_CHUNK_OVERLAP`)          |
 | **Retrieval**        | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
-| **Smoke tests**      | 44 (`tests/smoke_test.py`) — run on every CI push                            |
+| **Smoke tests**      | 46 (`tests/smoke_test.py`) — run on every CI push                            |
 | **Live integration** | 10 (`tests/backend_feature_test.py`) — manual / scheduled only               |
 | **CI**               | flake8 + black + gitleaks + pip-audit + smoke + frontend build               |
-| **Docker**           | `python:3.12-slim`, Streamlit `:8501`, single-container compose              |
+| **Docker**           | Default SPA `Dockerfile.spa` `:8000`; Streamlit `--profile streamlit` `:8501` |
 | **Seed docs**        | `data/documents/_samples/` — copy to `{your_name}/`                          |
 | **UIs**              | Streamlit (`app.py`) + FastAPI/React (`api.py`, `frontend/`)                 |
-| **Isolation**        | Soft: per-user folders + metadata + Mem0 `user_id`; shared Neo4j DB; no auth |
+| **Isolation**        | Soft: folders + metadata + Mem0 `user_id`; **shared Neo4j DB**; optional `INAYAT_API_KEY` |
 | **Critical env**     | `GEMINI_API_KEY`                                                             |
 | **Recommended env**  | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`              |
 | **Demo breakers**    | `INAYAT_DEMO_MODE=true` (set by `activate.ps1`)                              |

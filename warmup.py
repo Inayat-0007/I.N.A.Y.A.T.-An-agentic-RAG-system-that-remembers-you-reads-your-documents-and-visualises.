@@ -48,7 +48,7 @@ def warmup() -> bool:
     for svc, status in statuses.items():
         logger.info("  %-8s -> %s", svc, status)
 
-    # 3. Neo4j keepalive query
+    # 3. Neo4j keepalive only — do not build an index for "default"
     from core.graph_store import run_cypher
 
     rows = safe_execute(lambda: run_cypher("RETURN 1 AS ping"), fallback=[])
@@ -57,14 +57,18 @@ def warmup() -> bool:
     else:
         logger.warning("  Neo4j keepalive query   -> FAILED (instance may be paused)")
 
-    # 4. Pre-build index (optional — makes first user query faster)
-    from core.ingest import get_index
+    from core.ingest import user_has_documents
 
-    idx = safe_execute(get_index, fallback=None)
-    if idx:
-        logger.info("  PropertyGraphIndex      -> loaded / built")
+    if user_has_documents("default"):
+        from core.ingest import get_index
+
+        idx = safe_execute(lambda: get_index("default"), fallback=None)
+        if idx:
+            logger.info("  PropertyGraphIndex      -> loaded for existing default profile")
+        else:
+            logger.warning("  PropertyGraphIndex      -> default profile exists but index failed")
     else:
-        logger.warning("  PropertyGraphIndex      -> could not initialise")
+        logger.info("  PropertyGraphIndex      -> skipped (no documents for default)")
 
     all_up = all(s == UP for s in statuses.values())
     logger.info("=" * 60)

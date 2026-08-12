@@ -74,6 +74,12 @@ def _has_documents(user_id: str) -> bool:
     return len(files) > 0
 
 
+def user_has_documents(user_id: str) -> bool:
+    """Return True when the user folder contains indexable files."""
+    uid = UserId.parse(user_id).value
+    return _has_documents(uid)
+
+
 def get_index_status(user_id: str) -> dict:
     """Return the current index build status for a user."""
     uid = UserId.parse(user_id).value

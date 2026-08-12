@@ -41,22 +41,40 @@ class CircuitBreaker:
     HALF_OPEN = "HALF_OPEN"
 
     def __init__(
-        self, failure_threshold: int = 3, recovery_timeout: float = 60.0
+        self,
+        failure_threshold: int = 3,
+        recovery_timeout: float = 60.0,
+        *,
+        service: str = "unknown",
     ) -> None:
         """Initialise the breaker.
 
         Args:
             failure_threshold: Consecutive failures before opening the circuit.
             recovery_timeout: Seconds to wait in OPEN state before probing.
+            service: Service name for transition logs (Mem0, Neo4j, …).
         """
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
+        self.service = service
         self._failure_count: int = 0
         self._state: str = self.CLOSED
         self._last_failure_time: float = 0.0
         self.forced_open: bool = False
         self._lock = threading.Lock()
         self._half_open_probing: bool = False
+
+    def _transition(self, new_state: str) -> None:
+        """Set state and log when it actually changes (caller holds lock)."""
+        if new_state == self._state:
+            return
+        logger.info(
+            "breaker_state=%s service=%s previous=%s",
+            new_state,
+            self.service,
+            self._state,
+        )
+        self._state = new_state
 
     @property
     def state(self) -> str:
@@ -66,14 +84,14 @@ class CircuitBreaker:
                 return self.OPEN
             if self._state == self.OPEN:
                 if time.time() - self._last_failure_time >= self.recovery_timeout:
-                    self._state = self.HALF_OPEN
+                    self._transition(self.HALF_OPEN)
             return self._state
 
     def record_success(self) -> None:
         """Reset the breaker on a successful call."""
         with self._lock:
             self._failure_count = 0
-            self._state = self.CLOSED
+            self._transition(self.CLOSED)
             self._half_open_probing = False
 
     def record_failure(self) -> None:
@@ -83,10 +101,12 @@ class CircuitBreaker:
             self._last_failure_time = time.time()
             self._half_open_probing = False
             if self._failure_count >= self.failure_threshold:
-                self._state = self.OPEN
+                self._transition(self.OPEN)
                 logger.warning(
-                    "Circuit breaker OPENED after %d consecutive failures.",
+                    "Circuit breaker OPENED after %d consecutive failures. "
+                    "breaker_state=OPEN service=%s",
                     self._failure_count,
+                    self.service,
                 )
 
     def allow_request(self) -> bool:
@@ -96,7 +116,7 @@ class CircuitBreaker:
                 return False
             if self._state == self.OPEN:
                 if time.time() - self._last_failure_time >= self.recovery_timeout:
-                    self._state = self.HALF_OPEN
+                    self._transition(self.HALF_OPEN)
                 else:
                     return False
             if self._state == self.HALF_OPEN:
@@ -213,4 +233,10 @@ def set_breaker_forced_open(
                 "INAYAT_DEMO_MODE=true and valid configuration."
             ) from None
     breaker.forced_open = forced
+    logger.info(
+        "breaker_state=%s service=%s reason=forced_open value=%s",
+        breaker.OPEN if forced else breaker.state,
+        service or breaker.service,
+        forced,
+    )
 

@@ -1,9 +1,26 @@
-version: '3.8'
+# I.N.A.Y.A.T. compose — Phase 2 default is the SPA (FastAPI :8000).
+# Streamlit remains available: docker compose --profile streamlit up
 
 services:
-  inayat-app:
-    build: .
+  inayat-spa:
+    build:
+      context: .
+      dockerfile: Dockerfile.spa
+    container_name: inayat_spa
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: always
+
+  inayat-streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: inayat_agent
+    profiles: ["streamlit"]
     ports:
       - "8501:8501"
     volumes:

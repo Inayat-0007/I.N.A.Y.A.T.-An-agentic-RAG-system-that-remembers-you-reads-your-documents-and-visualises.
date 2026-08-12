@@ -18,7 +18,7 @@ from core.settings import get_settings
 logger = logging.getLogger("inayat")
 
 # Circuit breaker shared across all memory operations
-_cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+_cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60, service="Mem0")
 
 
 # ---------------------------------------------------------------------------

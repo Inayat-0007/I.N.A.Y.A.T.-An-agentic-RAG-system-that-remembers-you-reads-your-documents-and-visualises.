@@ -23,6 +23,7 @@ import {
   DataSet,
   Network,
 } from "vis-network/standalone/umd/vis-network.min.js";
+import { apiHeaders } from "../apiHeaders";
 
 export default function AgentWorkspace({ userId, setUserId }) {
   const [messages, setMessages] = useState([]);
@@ -38,6 +39,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
   const [breakers, setBreakers] = useState({ mem0: false, neo4j: false });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [graphIsMock, setGraphIsMock] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
 
@@ -83,6 +85,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
     fetch(`/api/graph?user_id=${userId}`)
       .then((res) => res.json())
       .then((graphData) => {
+        setGraphIsMock(Boolean(graphData.is_mock));
         const container = containerRef.current;
         if (!container) return;
 
@@ -210,10 +213,14 @@ export default function AgentWorkspace({ userId, setUserId }) {
     try {
       const res = await fetch("/api/health/toggle", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ service, forced: newVal }),
       });
       const data = await res.json();
+      if (res.status === 403) {
+        alert(data.detail || "Enable INAYAT_DEMO_MODE to toggle circuit breakers.");
+        return;
+      }
       if (data.status === "success") {
         refreshHealth();
       }
@@ -232,6 +239,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
     try {
       const res = await fetch(`/api/memories/clear?user_id=${userId}`, {
         method: "POST",
+        headers: apiHeaders(),
       });
       const data = await res.json();
       if (data.status === "success") {
@@ -258,7 +266,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
       const res = await fetch("/api/query", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           question: promptText,
           user_id: userId,
@@ -320,6 +328,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
     try {
       const res = await fetch("/api/upload", {
         method: "POST",
+        headers: apiHeaders(),
         body: formData,
       });
       const data = await res.json();
@@ -763,6 +772,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
               <div className="absolute top-4 right-4 z-30 bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan px-3 py-1.5 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 animate-pulse">
                 <Sparkles className="w-4 h-4" /> Interactive Vis.js Canvas
               </div>
+              {graphIsMock && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-amber-500/15 border border-amber-400/40 text-amber-300 px-4 py-2 rounded-xl text-xs font-heading font-bold">
+                  Mock graph — no chunks indexed for this user
+                </div>
+              )}
 
               {/* Vis.js network container */}
               <div ref={containerRef} className="w-full h-full" />

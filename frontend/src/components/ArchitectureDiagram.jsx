@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { CheckCircle2, AlertTriangle, Zap, Terminal, RefreshCw } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { apiHeaders } from '../apiHeaders'
 
 export default function ArchitectureDiagram() {
   const [activeStep, setActiveStep] = useState(null)
@@ -27,10 +28,14 @@ export default function ArchitectureDiagram() {
     try {
       const res = await fetch('/api/health/toggle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ service, forced: newVal })
       })
       const data = await res.json()
+      if (res.status === 403) {
+        alert(data.detail || 'Enable INAYAT_DEMO_MODE to toggle circuit breakers.')
+        return
+      }
       if (data.status === 'success') {
         setter(newVal)
       }

@@ -51,7 +51,7 @@ export default function FeaturesShowcase() {
     {
       icon: <Award className="w-6 h-6 text-amber-500" />,
       title: "Industrial Code Quality",
-      desc: "Backed by 44 smoke tests plus 10 live integration tests; CI runs smoke and frontend build on every PR.",
+      desc: "Backed by 46 smoke tests plus 10 live integration tests; CI runs smoke and frontend build on every PR.",
     },
   ];
 

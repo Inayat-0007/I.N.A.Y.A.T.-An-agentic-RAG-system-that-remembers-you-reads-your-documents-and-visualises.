@@ -21,7 +21,7 @@ logger = logging.getLogger("inayat")
 
 _driver: Optional[Driver] = None
 _driver_lock = threading.Lock()
-_cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+_cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60, service="Neo4j")
 
 
 # ---------------------------------------------------------------------------
@@ -303,14 +303,134 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
 
 
 def _node_allowed_for_user(labels: List[str], props: dict, user_id: str) -> bool:
-    """Return True when a graph node may be shown for the given user."""
+    """Return True when a graph node may be shown for the given user.
+
+    Chunks must match ``user_id``. Nodes with a different ``user_id`` property
+    are always stripped. Entities without a user_id are decided at graph
+    assembly time (every connected Chunk in the result set must belong to
+    this user).
+    """
     label_list = labels or ["Entity"]
-    if "Chunk" in label_list:
-        return props.get("user_id") == user_id
-    if "Entity" in label_list:
-        return True
     node_user = props.get("user_id")
-    return node_user in (None, user_id)
+    if node_user not in (None, user_id):
+        return False
+    if "Chunk" in label_list:
+        return node_user == user_id
+    return True
+
+
+def _assemble_visualization(records: List[dict], user_id: str) -> dict:
+    """Build vis payload from Cypher rows with strict user isolation."""
+
+    def clean_props(props: Optional[dict]) -> dict:
+        if not props:
+            return {}
+        cleaned = {}
+        for key, value in props.items():
+            if key in ("embedding", "_node_content"):
+                continue
+            if key == "text" and isinstance(value, str) and len(value) > 1000:
+                cleaned[key] = value[:1000] + "..."
+            else:
+                cleaned[key] = value
+        return cleaned
+
+    raw_nodes: dict = {}
+    raw_edges: list = []
+    neighbors: dict[str, set] = {}
+
+    def _touch(nid: str) -> None:
+        neighbors.setdefault(nid, set())
+
+    for rec in records:
+        s_id = rec.get("source_id")
+        t_id = rec.get("target_id")
+        if not s_id or not t_id:
+            continue
+        s_props = clean_props(rec.get("source_props"))
+        t_props = clean_props(rec.get("target_props"))
+        s_labels = rec.get("source_labels") or ["Entity"]
+        t_labels = rec.get("target_labels") or ["Entity"]
+        raw_nodes[s_id] = {
+            "labels": s_labels,
+            "props": s_props,
+            "name": rec.get("source_name"),
+        }
+        raw_nodes[t_id] = {
+            "labels": t_labels,
+            "props": t_props,
+            "name": rec.get("target_name"),
+        }
+        raw_edges.append(
+            {
+                "from": s_id,
+                "to": t_id,
+                "label": rec.get("rel_type") or "RELATED",
+                "properties": clean_props(rec.get("rel_props")),
+            }
+        )
+        _touch(s_id)
+        _touch(t_id)
+        neighbors[s_id].add(t_id)
+        neighbors[t_id].add(s_id)
+
+    chunk_owner: dict = {}
+    for nid, node in raw_nodes.items():
+        if "Chunk" in (node["labels"] or []):
+            chunk_owner[nid] = node["props"].get("user_id")
+
+    allowed: set = set()
+    for nid, node in raw_nodes.items():
+        if not _node_allowed_for_user(node["labels"], node["props"], user_id):
+            continue
+        labels = node["labels"] or ["Entity"]
+        if "Chunk" not in labels:
+            connected_chunks = [
+                cid for cid in neighbors.get(nid, set()) if cid in chunk_owner
+            ]
+            if connected_chunks and any(
+                chunk_owner[cid] != user_id for cid in connected_chunks
+            ):
+                continue
+        allowed.add(nid)
+
+    user_chunks = [
+        nid
+        for nid in allowed
+        if "Chunk" in (raw_nodes[nid]["labels"] or [])
+        and raw_nodes[nid]["props"].get("user_id") == user_id
+    ]
+    if not user_chunks:
+        return _mock_visualization_graph(user_id)
+
+    nodes: dict = {}
+    edges: list = []
+    for nid in allowed:
+        node = raw_nodes[nid]
+        labels = node["labels"] or ["Entity"]
+        label = labels[0]
+        props = node["props"]
+        name = node["name"]
+        if not name:
+            if label == "Chunk" and props.get("file_name"):
+                name = f"Chunk: {props.get('file_name')}"
+            else:
+                name = f"{label} ({str(nid)[:6]})"
+        nodes[nid] = {
+            "id": nid,
+            "label": name,
+            "group": label,
+            "properties": props,
+            "title": f"<b>{label}</b>: {name}",
+        }
+
+    for edge in raw_edges:
+        if edge["from"] in allowed and edge["to"] in allowed:
+            edges.append(edge)
+
+    if not nodes:
+        return _mock_visualization_graph(user_id)
+    return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
 
 
 def get_visualization_data(user_id: str = "default") -> dict:
@@ -344,77 +464,4 @@ def get_visualization_data(user_id: str = "default") -> dict:
     if not records:
         return _mock_visualization_graph(uid)
 
-    nodes: dict = {}
-    edges: list = []
-
-    def clean_props(props: Optional[dict]) -> dict:
-        if not props:
-            return {}
-        cleaned = {}
-        for key, value in props.items():
-            if key in ("embedding", "_node_content"):
-                continue
-            if key == "text" and isinstance(value, str) and len(value) > 1000:
-                cleaned[key] = value[:1000] + "..."
-            else:
-                cleaned[key] = value
-        return cleaned
-
-    for rec in records:
-        s_id = rec.get("source_id")
-        s_props = clean_props(rec.get("source_props"))
-        s_labels = rec.get("source_labels", ["Entity"])
-        s_label = s_labels[0] if s_labels else "Entity"
-
-        t_id = rec.get("target_id")
-        t_props = clean_props(rec.get("target_props"))
-        t_labels = rec.get("target_labels", ["Entity"])
-        t_label = t_labels[0] if t_labels else "Entity"
-
-        if not _node_allowed_for_user(s_labels, s_props, uid):
-            continue
-        if not _node_allowed_for_user(t_labels, t_props, uid):
-            continue
-
-        s_name = rec.get("source_name")
-        if not s_name:
-            if s_label == "Chunk" and s_props.get("file_name"):
-                s_name = f"Chunk: {s_props.get('file_name')}"
-            else:
-                s_name = f"{s_label} ({str(s_id)[:6]})"
-
-        t_name = rec.get("target_name")
-        if not t_name:
-            if t_label == "Chunk" and t_props.get("file_name"):
-                t_name = f"Chunk: {t_props.get('file_name')}"
-            else:
-                t_name = f"{t_label} ({str(t_id)[:6]})"
-
-        rel_type = rec.get("rel_type") or "RELATED"
-        rel_props = clean_props(rec.get("rel_props"))
-
-        if s_id not in nodes:
-            nodes[s_id] = {
-                "id": s_id,
-                "label": s_name,
-                "group": s_label,
-                "properties": s_props,
-                "title": f"<b>{s_label}</b>: {s_name}",
-            }
-        if t_id not in nodes:
-            nodes[t_id] = {
-                "id": t_id,
-                "label": t_name,
-                "group": t_label,
-                "properties": t_props,
-                "title": f"<b>{t_label}</b>: {t_name}",
-            }
-
-        edges.append(
-            {"from": s_id, "to": t_id, "label": rel_type, "properties": rel_props}
-        )
-
-    if not nodes:
-        return _mock_visualization_graph(uid)
-
-    return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
+    return _assemble_visualization(records, uid)

@@ -24,6 +24,9 @@ neo4j
 tenacity
 python-dotenv
 pydantic-settings
+fastapi
+uvicorn
+python-multipart
 
 # Dev / CI tools
 flake8

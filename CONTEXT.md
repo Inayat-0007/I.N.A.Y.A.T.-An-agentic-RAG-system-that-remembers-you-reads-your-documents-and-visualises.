@@ -69,7 +69,7 @@
 
 | File                            | Count | CI             |
 | ------------------------------- | ----- | -------------- |
-| `tests/smoke_test.py`           | 44    | Yes            |
+| `tests/smoke_test.py`           | 46    | Yes            |
 | `tests/backend_feature_test.py` | 10    | No (live keys) |
 
 Run smoke: `python tests/smoke_test.py`
@@ -84,7 +84,7 @@ On push/PR to `main` or `master` ([ci.yml](.github/workflows/ci.yml)):
 2. black --check
 3. gitleaks
 4. pip-audit (`pip install pip-audit` then `pip-audit -r requirements.txt`)
-5. `python tests/smoke_test.py` (44 tests)
+5. `python tests/smoke_test.py` (46 tests)
 
 Parallel job **frontend-build**: `npm ci` + `npm run build` in `frontend/`.
 
@@ -103,6 +103,9 @@ Python 3.12. Installs with `-c constraints.txt`. No pytest. No Safety package.
 | `NEO4J_URI`, `NEO4J_PASSWORD` | Recommended                      |
 | `NEO4J_USERNAME`              | Default `neo4j`                  |
 | `INAYAT_DEMO_MODE`            | For circuit-breaker demo toggles |
+| `INAYAT_API_KEY`              | Optional; if set, mutating API routes need `X-INAYAT-KEY` |
+
+Shared Neo4j database + `user_id` metadata (not per-user Aura DBs).
 
 See `.env.example` for `INAYAT_*` tuning keys.
 

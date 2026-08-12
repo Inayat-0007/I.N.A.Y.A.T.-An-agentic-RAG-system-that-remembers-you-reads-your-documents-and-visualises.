@@ -47,6 +47,7 @@ class InayatSettings(BaseSettings):
         default=10_485_760, validation_alias="INAYAT_MAX_UPLOAD_BYTES", ge=1
     )
     demo_mode: bool = Field(default=False, validation_alias="INAYAT_DEMO_MODE")
+    api_key: str = Field(default="", validation_alias="INAYAT_API_KEY")
     cors_origins: str = Field(
         default="http://localhost:5173,http://localhost:8000",
         validation_alias="INAYAT_CORS_ORIGINS",
