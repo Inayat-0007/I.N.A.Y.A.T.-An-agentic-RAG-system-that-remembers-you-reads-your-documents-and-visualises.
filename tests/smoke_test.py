@@ -141,6 +141,61 @@ class TestIdentity(unittest.TestCase):
             UserId.parse("alice/bob")
 
 
+class TestSettings(unittest.TestCase):
+    """InayatSettings validation (HOW_TO_FIX §3.1)."""
+
+    def setUp(self) -> None:
+        self._prev_gemini_key = os.environ.get("GEMINI_API_KEY")
+        os.environ["GEMINI_API_KEY"] = "test-settings-key"
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    def tearDown(self) -> None:
+        if self._prev_gemini_key is None:
+            os.environ.pop("GEMINI_API_KEY", None)
+        else:
+            os.environ["GEMINI_API_KEY"] = self._prev_gemini_key
+        os.environ.pop("INAYAT_CHUNK_SIZE", None)
+        os.environ.pop("INAYAT_CHUNK_OVERLAP", None)
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    def test_defaults_include_mmr_off(self) -> None:
+        from core.settings import get_settings
+
+        settings = get_settings()
+        self.assertFalse(settings.mmr_enabled)
+        self.assertEqual(settings.mmr_lambda, 0.7)
+        self.assertEqual(settings.chunk_size, 512)
+        self.assertEqual(settings.chunk_overlap, 64)
+
+    def test_chunk_overlap_must_be_less_than_chunk_size(self) -> None:
+        from pydantic import ValidationError
+
+        from core.settings import clear_settings_cache, get_settings
+
+        os.environ["INAYAT_CHUNK_SIZE"] = "512"
+        os.environ["INAYAT_CHUNK_OVERLAP"] = "512"
+        clear_settings_cache()
+
+        with self.assertRaises(ValidationError):
+            get_settings()
+
+
+class TestSchemas(unittest.TestCase):
+    """Typed query contracts (HOW_TO_FIX §3.3)."""
+
+    def test_query_input_coerces_user_id(self) -> None:
+        from core.identity import UserId
+        from core.schemas import QueryInput
+
+        inp = QueryInput.from_raw("Hello?", user_id="demo_user")
+        self.assertIsInstance(inp.user_id, UserId)
+        self.assertEqual(inp.resolved_user().value, "demo_user")
+
+
 class TestEnvironment(unittest.TestCase):
     """Verify environment parsing logic."""
 
@@ -249,7 +304,7 @@ class TestLiveServices(unittest.TestCase):
 
     def test_gemini_ping(self) -> None:
         key = os.getenv("GEMINI_API_KEY")
-        if not key or "dummy" in key.lower():
+        if not key or "dummy" in key.lower() or key.startswith("test-"):
             self.skipTest("GEMINI_API_KEY not set or is dummy")
         from core.llm_setup import ping_gemini
 
@@ -384,6 +439,8 @@ if __name__ == "__main__":
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestImports))
     suite.addTests(loader.loadTestsFromTestCase(TestIdentity))
+    suite.addTests(loader.loadTestsFromTestCase(TestSettings))
+    suite.addTests(loader.loadTestsFromTestCase(TestSchemas))
     suite.addTests(loader.loadTestsFromTestCase(TestEnvironment))
     suite.addTests(loader.loadTestsFromTestCase(TestHealthMonitor))
     suite.addTests(loader.loadTestsFromTestCase(TestResilience))

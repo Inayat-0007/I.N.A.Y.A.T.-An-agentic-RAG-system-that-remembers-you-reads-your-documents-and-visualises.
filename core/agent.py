@@ -34,6 +34,38 @@ _APOLOGY = (
     "Please try again in a moment."
 )
 
+_mmr_fallback_logged = False
+
+
+def _build_query_engine(index, settings, filters):
+    """Create a LlamaIndex query engine (optional MMR when enabled)."""
+    global _mmr_fallback_logged
+
+    base_kwargs = {
+        "include_text": True,
+        "similarity_top_k": settings.similarity_top_k,
+        "filters": filters,
+    }
+    if not settings.mmr_enabled:
+        return index.as_query_engine(**base_kwargs)
+
+    try:
+        return index.as_query_engine(
+            vector_store_query_mode="mmr",
+            mmr_threshold=settings.mmr_lambda,
+            **base_kwargs,
+        )
+    except TypeError as exc:
+        if not _mmr_fallback_logged:
+            logger.warning(
+                "MMR query mode not supported by installed LlamaIndex (%s); "
+                "falling back to similarity_top_k=%s.",
+                exc,
+                settings.similarity_top_k,
+            )
+            _mmr_fallback_logged = True
+        return index.as_query_engine(**base_kwargs)
+
 
 def _augment_prompt(question: str, memory_context: str) -> str:
     if memory_context:
@@ -77,11 +109,7 @@ def query_detailed(inp: QueryInput) -> QueryResult:
                 filters = MetadataFilters(
                     filters=[MetadataFilter(key="user_id", value=user.value)]
                 )
-                engine = index.as_query_engine(
-                    include_text=True,
-                    similarity_top_k=settings.similarity_top_k,
-                    filters=filters,
-                )
+                engine = _build_query_engine(index, settings, filters)
                 response = engine.query(augmented)
                 res_str = str(response)
                 source_nodes = getattr(response, "source_nodes", None) or []

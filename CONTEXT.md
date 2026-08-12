@@ -69,7 +69,7 @@
 
 | File                            | Count | CI             |
 | ------------------------------- | ----- | -------------- |
-| `tests/smoke_test.py`           | 36    | Yes            |
+| `tests/smoke_test.py`           | 39    | Yes            |
 | `tests/backend_feature_test.py` | 10    | No (live keys) |
 
 Run smoke: `python tests/smoke_test.py`
@@ -84,7 +84,7 @@ On push/PR to `main` or `master` ([ci.yml](.github/workflows/ci.yml)):
 2. black --check
 3. gitleaks
 4. pip-audit (`pip install pip-audit` then `pip-audit -r requirements.txt`)
-5. `python tests/smoke_test.py` (36 tests)
+5. `python tests/smoke_test.py` (39 tests)
 
 Parallel job **frontend-build**: `npm ci` + `npm run build` in `frontend/`.
 

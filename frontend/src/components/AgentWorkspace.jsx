@@ -270,12 +270,10 @@ export default function AgentWorkspace({ userId, setUserId }) {
       const assistantMsg = {
         role: "assistant",
         content: data.answer,
-        route: data.route || "llm",
+        route: data.route ?? "llm",
         source_count: data.source_count ?? 0,
         used_memory: Boolean(data.used_memory),
         latency_ms: data.latency_ms ?? 0,
-        isRag: data.route === "rag",
-        isMemory: Boolean(data.used_memory),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -668,12 +666,12 @@ export default function AgentWorkspace({ userId, setUserId }) {
                   {/* Citations list tags */}
                   {msg.role === "assistant" && (
                     <div className="flex gap-1">
-                      {msg.isRag && (
+                      {msg.route === "rag" && (
                         <span className="bg-purple-500/20 text-purple-400 border border-purple-500/35 px-1 rounded">
                           Graph RAG
                         </span>
                       )}
-                      {msg.isMemory && (
+                      {msg.used_memory && (
                         <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/35 px-1 rounded">
                           Mem0 Context
                         </span>
@@ -683,7 +681,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
                           Degraded
                         </span>
                       )}
-                      {msg.route === "llm" && !msg.isRag && (
+                      {msg.route === "llm" && (
                         <span className="bg-cyber-magenta/20 text-cyber-magenta border border-cyber-magenta/35 px-1 rounded">
                           LLM Fallback
                         </span>

@@ -14,6 +14,7 @@ from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 from neo4j import Driver, GraphDatabase
 
 from core.resilience import CircuitBreaker, resilient_call, safe_execute
+from core.identity import UserId
 from core.settings import InayatSettings, get_settings
 
 logger = logging.getLogger("inayat")
@@ -314,9 +315,10 @@ def _node_allowed_for_user(labels: List[str], props: dict, user_id: str) -> bool
 
 def get_visualization_data(user_id: str = "default") -> dict:
     """Retrieve user-scoped nodes/edges; mock graph when Neo4j is unavailable."""
+    uid = UserId.parse(user_id).value
     if not _cb.allow_request():
-        logger.debug("Neo4j circuit OPEN — returning mock visualization for %s.", user_id)
-        return _mock_visualization_graph(user_id)
+        logger.debug("Neo4j circuit OPEN — returning mock visualization for %s.", uid)
+        return _mock_visualization_graph(uid)
 
     query_str = """
     MATCH (c:Chunk {user_id: $user_id})
@@ -337,10 +339,10 @@ def get_visualization_data(user_id: str = "default") -> dict:
         properties(r) AS rel_props
     LIMIT 120
     """
-    records = run_cypher(query_str, {"user_id": user_id})
+    records = run_cypher(query_str, {"user_id": uid})
 
     if not records:
-        return _mock_visualization_graph(user_id)
+        return _mock_visualization_graph(uid)
 
     nodes: dict = {}
     edges: list = []
@@ -369,9 +371,9 @@ def get_visualization_data(user_id: str = "default") -> dict:
         t_labels = rec.get("target_labels", ["Entity"])
         t_label = t_labels[0] if t_labels else "Entity"
 
-        if not _node_allowed_for_user(s_labels, s_props, user_id):
+        if not _node_allowed_for_user(s_labels, s_props, uid):
             continue
-        if not _node_allowed_for_user(t_labels, t_props, user_id):
+        if not _node_allowed_for_user(t_labels, t_props, uid):
             continue
 
         s_name = rec.get("source_name")
@@ -413,6 +415,6 @@ def get_visualization_data(user_id: str = "default") -> dict:
         )
 
     if not nodes:
-        return _mock_visualization_graph(user_id)
+        return _mock_visualization_graph(uid)
 
     return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}

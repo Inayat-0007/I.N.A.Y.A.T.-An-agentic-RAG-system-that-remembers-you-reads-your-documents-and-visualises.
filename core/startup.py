@@ -65,11 +65,19 @@ def run_startup() -> Tuple[bool, Dict[str, str], List[str]]:
     Returns:
         Tuple of (ok, health_statuses, warnings).
     """
+    import logging as _logging
+
     load_env()
-    setup_logging()
 
     ok, missing_crit, missing_rec = validate_env()
     warnings: List[str] = []
+
+    if ok:
+        level_name = get_settings().log_level.upper()
+        log_level = getattr(_logging, level_name, _logging.INFO)
+        setup_logging(log_level=log_level)
+    else:
+        setup_logging()
 
     if not ok:
         return False, {}, [f"Missing critical: {', '.join(missing_crit)}"]

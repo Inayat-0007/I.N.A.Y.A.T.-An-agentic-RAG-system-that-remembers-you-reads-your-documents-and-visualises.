@@ -12,11 +12,11 @@ from typing import List, Optional
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from core.agent import query_detailed
 from core.conversation import append_turn
@@ -32,7 +32,7 @@ from core.ingest import (
 )
 from core.memory import add_memory, clear_memories, get_memories
 from core.observability import set_request_id
-from core.schemas import QueryInput
+from core.schemas import QueryInput, QueryResult
 from core.settings import get_settings
 from core.startup import load_env, validate_env
 from core.health import HealthMonitor
@@ -73,9 +73,23 @@ app.add_middleware(
 
 
 class QueryRequest(BaseModel):
-    question: str
-    user_id: str
-    memory_context: Optional[str] = ""
+    """Client query payload. ``memory_context`` is accepted for compatibility only."""
+
+    question: str = Field(..., min_length=1, description="Natural-language question.")
+    user_id: str = Field(..., description="Profile identifier (validated server-side).")
+    memory_context: Optional[str] = Field(
+        default="",
+        description=(
+            "Ignored by the server. Mem0 is the authoritative memory store; "
+            "the API rebuilds memory context from Mem0 after persisting the question."
+        ),
+    )
+
+
+class QueryApiResponse(QueryResult):
+    """Query result plus refreshed Mem0 lines for the UI."""
+
+    memories: List[str] = Field(default_factory=list)
 
 
 class ToggleBreakerRequest(BaseModel):
@@ -154,8 +168,18 @@ def api_get_graph(user_id: str):
     return get_visualization_data(user.value)
 
 
-@app.post("/api/query")
-def api_query_agent(req: QueryRequest):
+@app.post(
+    "/api/query",
+    response_model=QueryApiResponse,
+    summary="Run an agent query",
+    description=(
+        "Answers a question via RAG with LLM fallback. "
+        "Memory context is always rebuilt from Mem0 on the server; "
+        "the optional ``memory_context`` field in the request body is not used for "
+        "authorization or prompt assembly (cache hint only)."
+    ),
+)
+def api_query_agent(req: QueryRequest = Body(...)):
     _require_boot_ok()
     user = _parse_user_id(req.user_id)
     set_request_id(f"api-query-{user.value}")
@@ -167,7 +191,7 @@ def api_query_agent(req: QueryRequest):
     result = query_detailed(
         QueryInput(
             question=req.question,
-            user_id=user.value,
+            user_id=user,
             memory_context=memory_ctx,
         )
     )
@@ -175,15 +199,7 @@ def api_query_agent(req: QueryRequest):
     append_turn(user.value, "user", req.question)
     append_turn(user.value, "assistant", result.answer)
 
-    return {
-        "answer": result.answer,
-        "route": result.route,
-        "source_count": result.source_count,
-        "used_memory": result.used_memory,
-        "latency_ms": result.latency_ms,
-        "memory_context": memory_ctx,
-        "memories": mem_lines,
-    }
+    return QueryApiResponse(**result.model_dump(), memories=mem_lines)
 
 
 def _require_boot_ok() -> None:

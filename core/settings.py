@@ -39,6 +39,10 @@ class InayatSettings(BaseSettings):
         default=64, validation_alias="INAYAT_CHUNK_OVERLAP", ge=0
     )
     similarity_top_k: int = Field(default=5, validation_alias="INAYAT_TOP_K", ge=1)
+    mmr_enabled: bool = Field(default=False, validation_alias="INAYAT_MMR_ENABLED")
+    mmr_lambda: float = Field(
+        default=0.7, validation_alias="INAYAT_MMR_LAMBDA", ge=0.0, le=1.0
+    )
     max_upload_bytes: int = Field(
         default=10_485_760, validation_alias="INAYAT_MAX_UPLOAD_BYTES", ge=1
     )

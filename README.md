@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
-  <img src="https://img.shields.io/badge/Tests-36%20smoke%20%2F%2010%20live-success" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-39%20smoke%20%2F%2010%20live-success" alt="Tests">
   <img src="https://img.shields.io/badge/CI-smoke%20%2B%20frontend-informational" alt="CI Scope">
   <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
@@ -30,7 +30,7 @@
 | **Embeddings**      | `gemini-embedding-001` (3072-dim)                                            |
 | **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)      |
 | **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
-| **Tests**           | 36 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
+| **Tests**           | 39 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
 | **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                 |
 | **Docker**          | `python:3.12-slim`, Streamlit `:8501`; compose is **one** service            |
 | **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`    |
@@ -189,7 +189,7 @@ Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
 ## 🧪 Testing Suite
 
 ```bash
-# CI smoke suite (36 tests)
+# CI smoke suite (39 tests)
 python tests/smoke_test.py
 
 # Live integration (10 tests — requires real API keys)
@@ -208,7 +208,7 @@ On push/PR to `main` or `master` (see [.github/workflows/ci.yml](.github/workflo
 2. **black** — formatting check
 3. **gitleaks** — secret scan
 4. **pip-audit** — dependency vulnerability scan
-5. **smoke tests** — `python tests/smoke_test.py` (36 tests)
+5. **smoke tests** — `python tests/smoke_test.py` (39 tests)
 
 **frontend-build** job (parallel): `npm ci` + `npm run build` in `frontend/`.
 

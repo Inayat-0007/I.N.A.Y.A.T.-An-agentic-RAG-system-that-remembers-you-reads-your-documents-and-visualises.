@@ -1181,7 +1181,7 @@ def main() -> None:
         from core.schemas import QueryInput
 
         result = query_detailed(
-            QueryInput(
+            QueryInput.from_raw(
                 question=user_prompt,
                 user_id=st.session_state.user_id,
                 memory_context=memory_ctx,

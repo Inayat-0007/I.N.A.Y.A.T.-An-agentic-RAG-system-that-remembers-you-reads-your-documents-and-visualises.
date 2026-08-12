@@ -13,7 +13,7 @@
 | **Embeddings**       | `gemini-embedding-001` (3072-dim)                                            |
 | **Chunking**         | size 512, overlap 64 (`INAYAT_CHUNK_SIZE` / `INAYAT_CHUNK_OVERLAP`)          |
 | **Retrieval**        | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
-| **Smoke tests**      | 36 (`tests/smoke_test.py`) — run on every CI push                            |
+| **Smoke tests**      | 39 (`tests/smoke_test.py`) — run on every CI push                            |
 | **Live integration** | 10 (`tests/backend_feature_test.py`) — manual / scheduled only               |
 | **CI**               | flake8 + black + gitleaks + pip-audit + smoke + frontend build               |
 | **Docker**           | `python:3.12-slim`, Streamlit `:8501`, single-container compose              |
