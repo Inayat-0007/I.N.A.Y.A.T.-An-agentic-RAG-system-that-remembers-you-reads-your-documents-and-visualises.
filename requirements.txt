@@ -23,6 +23,7 @@ neo4j
 # Resilience & configuration
 tenacity
 python-dotenv
+pydantic-settings
 
 # Dev / CI tools
 flake8

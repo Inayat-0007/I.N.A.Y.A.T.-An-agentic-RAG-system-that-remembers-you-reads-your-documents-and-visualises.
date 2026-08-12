@@ -1,328 +1,413 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { 
-  Send, User, Cpu, RefreshCw, Trash2, BookOpen, Upload, 
-  CheckCircle, Database, ToggleLeft, ToggleRight, Sparkles,
-  ChevronLeft, ChevronRight, Share2, HelpCircle, Brain
-} from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { DataSet, Network } from 'vis-network/standalone/umd/vis-network.min.js'
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Send,
+  User,
+  Cpu,
+  RefreshCw,
+  Trash2,
+  BookOpen,
+  Upload,
+  CheckCircle,
+  Database,
+  ToggleLeft,
+  ToggleRight,
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  Share2,
+  HelpCircle,
+  Brain,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  DataSet,
+  Network,
+} from "vis-network/standalone/umd/vis-network.min.js";
 
 export default function AgentWorkspace({ userId, setUserId }) {
-  const [messages, setMessages] = useState([])
-  const [inputVal, setInputVal] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [indexing, setIndexing] = useState(false)
-  const [memories, setMemories] = useState([])
-  const [health, setHealth] = useState({ gemini: '⚪ Unknown', mem0: '⚪ Unknown', neo4j: '⚪ Unknown' })
-  const [breakers, setBreakers] = useState({ mem0: false, neo4j: false })
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [graphOpen, setGraphOpen] = useState(false)
-  const [selectedNode, setSelectedNode] = useState(null)
-  const [selectedEdge, setSelectedEdge] = useState(null)
+  const [messages, setMessages] = useState([]);
+  const [inputVal, setInputVal] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [indexing, setIndexing] = useState(false);
+  const [memories, setMemories] = useState([]);
+  const [health, setHealth] = useState({
+    gemini: "⚪ Unknown",
+    mem0: "⚪ Unknown",
+    neo4j: "⚪ Unknown",
+  });
+  const [breakers, setBreakers] = useState({ mem0: false, neo4j: false });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedEdge, setSelectedEdge] = useState(null);
 
-  const chatEndRef = useRef(null)
-  const networkRef = useRef(null)
-  const containerRef = useRef(null)
+  const chatEndRef = useRef(null);
+  const networkRef = useRef(null);
+  const containerRef = useRef(null);
 
   // Load chat history & memories from local storage key / API on user switch
   useEffect(() => {
-    if (!userId) return
-    
+    if (!userId) return;
+
     // Load chat history
-    const cachedHistory = localStorage.getItem(`messages_${userId}`)
+    const cachedHistory = localStorage.getItem(`messages_${userId}`);
     if (cachedHistory) {
-      setMessages(JSON.parse(cachedHistory))
+      setMessages(JSON.parse(cachedHistory));
     } else {
-      setMessages([])
+      setMessages([]);
     }
 
     // Load memories
-    refreshMemories()
-    
+    refreshMemories();
+
     // Load health status
-    refreshHealth()
-  }, [userId])
+    refreshHealth();
+  }, [userId]);
 
   // Cache message changes to local storage
   useEffect(() => {
     if (userId) {
-      localStorage.setItem(`messages_${userId}`, JSON.stringify(messages))
+      localStorage.setItem(`messages_${userId}`, JSON.stringify(messages));
     }
-  }, [messages, userId])
+  }, [messages, userId]);
 
   // Scroll to bottom of chat
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   // Render network graph when graphOpen is toggled
   useEffect(() => {
-    if (!graphOpen || !userId) return
+    if (!graphOpen || !userId) return;
 
     fetch(`/api/graph?user_id=${userId}`)
-      .then(res => res.json())
-      .then(graphData => {
-        const container = containerRef.current
-        if (!container) return
+      .then((res) => res.json())
+      .then((graphData) => {
+        const container = containerRef.current;
+        if (!container) return;
 
-        const nodes = new DataSet(graphData.nodes)
-        const edges = new DataSet(graphData.edges)
+        const nodes = new DataSet(graphData.nodes);
+        const edges = new DataSet(graphData.edges);
 
         const options = {
           nodes: {
-            shape: 'dot',
+            shape: "dot",
             size: 20,
-            font: { color: '#ffffff', size: 13, face: 'Outfit, sans-serif' },
+            font: { color: "#ffffff", size: 13, face: "Outfit, sans-serif" },
             borderWidth: 2,
-            shadow: true
+            shadow: true,
           },
           edges: {
             width: 2,
-            color: { color: 'rgba(129, 140, 248, 0.4)', highlight: '#c084fc' },
-            font: { color: '#a5b4fc', size: 10, align: 'horizontal', background: '#040408' },
+            color: { color: "rgba(129, 140, 248, 0.4)", highlight: "#c084fc" },
+            font: {
+              color: "#a5b4fc",
+              size: 10,
+              align: "horizontal",
+              background: "#040408",
+            },
             arrows: { to: { enabled: true, scaleFactor: 0.7 } },
-            smooth: { type: 'cubicBezier', forceDirection: 'none', roundness: 0.4 }
+            smooth: {
+              type: "cubicBezier",
+              forceDirection: "none",
+              roundness: 0.4,
+            },
           },
           groups: {
-            Agent: { color: { background: '#c084fc', border: '#a78bfa' } },
-            LLM: { color: { background: '#34d399', border: '#059669' } },
-            Memory: { color: { background: '#60a5fa', border: '#2563eb' } },
-            GraphStore: { color: { background: '#fb7185', border: '#e11d48' } },
-            Resilience: { color: { background: '#fbbf24', border: '#d97706' } },
-            User: { color: { background: '#f472b6', border: '#db2777' } },
-            Entity: { color: { background: '#818cf8', border: '#6366f1' } },
-            Chunk: { color: { background: '#94a3b8', border: '#475569' } }
+            Agent: { color: { background: "#c084fc", border: "#a78bfa" } },
+            LLM: { color: { background: "#34d399", border: "#059669" } },
+            Memory: { color: { background: "#60a5fa", border: "#2563eb" } },
+            GraphStore: { color: { background: "#fb7185", border: "#e11d48" } },
+            Resilience: { color: { background: "#fbbf24", border: "#d97706" } },
+            User: { color: { background: "#f472b6", border: "#db2777" } },
+            Entity: { color: { background: "#818cf8", border: "#6366f1" } },
+            Chunk: { color: { background: "#94a3b8", border: "#475569" } },
           },
           physics: {
             stabilization: false,
-            barnesHut: { gravitationalConstant: -3500, springConstant: 0.04, springLength: 120 }
+            barnesHut: {
+              gravitationalConstant: -3500,
+              springConstant: 0.04,
+              springLength: 120,
+            },
           },
-          interaction: { hover: true }
-        }
+          interaction: { hover: true },
+        };
 
-        const network = new Network(container, { nodes, edges }, options)
-        networkRef.current = network
+        const network = new Network(container, { nodes, edges }, options);
+        networkRef.current = network;
 
         // Event hooks
         network.on("selectNode", (params) => {
           if (params.nodes.length > 0) {
-            const nodeId = params.nodes[0]
-            const node = nodes.get(nodeId)
-            setSelectedNode(node)
-            setSelectedEdge(null)
+            const nodeId = params.nodes[0];
+            const node = nodes.get(nodeId);
+            setSelectedNode(node);
+            setSelectedEdge(null);
           }
-        })
+        });
 
         network.on("selectEdge", (params) => {
           if (params.nodes.length === 0 && params.edges.length > 0) {
-            const edgeId = params.edges[0]
-            const edge = edges.get(edgeId)
-            
+            const edgeId = params.edges[0];
+            const edge = edges.get(edgeId);
+
             // Get node labels
-            const fromNode = nodes.get(edge.from)
-            const toNode = nodes.get(edge.to)
-            
+            const fromNode = nodes.get(edge.from);
+            const toNode = nodes.get(edge.to);
+
             setSelectedEdge({
               ...edge,
               fromLabel: fromNode ? fromNode.label : `Node ${edge.from}`,
-              toLabel: toNode ? toNode.label : `Node ${edge.to}`
-            })
-            setSelectedNode(null)
+              toLabel: toNode ? toNode.label : `Node ${edge.to}`,
+            });
+            setSelectedNode(null);
           }
-        })
+        });
 
         network.on("deselectNode", () => {
-          setSelectedNode(null)
-        })
+          setSelectedNode(null);
+        });
 
         network.on("deselectEdge", () => {
-          setSelectedEdge(null)
-        })
+          setSelectedEdge(null);
+        });
       })
-      .catch(err => console.error("Error drawing graph:", err))
+      .catch((err) => console.error("Error drawing graph:", err));
 
     return () => {
       if (networkRef.current) {
-        networkRef.current.destroy()
-        networkRef.current = null
+        networkRef.current.destroy();
+        networkRef.current = null;
       }
-    }
-  }, [graphOpen, userId])
+    };
+  }, [graphOpen, userId]);
 
   // API wrappers
   const refreshMemories = async () => {
     try {
-      const res = await fetch(`/api/memories?user_id=${userId}`)
-      const data = await res.json()
-      setMemories(data.memories || [])
+      const res = await fetch(`/api/memories?user_id=${userId}`);
+      const data = await res.json();
+      setMemories(data.memories || []);
     } catch (err) {
-      console.error("Error refreshing memory list:", err)
+      console.error("Error refreshing memory list:", err);
     }
-  }
+  };
 
   const refreshHealth = async () => {
     try {
-      const res = await fetch('/api/health')
-      const data = await res.json()
-      setHealth(data.statuses || {})
-      setBreakers(data.breakers || {})
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      setHealth(data.statuses || {});
+      setBreakers(data.breakers || {});
     } catch (err) {
-      console.error("Error updating system health:", err)
+      console.error("Error updating system health:", err);
     }
-  }
+  };
 
   const toggleBreaker = async (service, currentVal) => {
-    const newVal = !currentVal
+    const newVal = !currentVal;
     try {
-      const res = await fetch('/api/health/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service, forced: newVal })
-      })
-      const data = await res.json()
-      if (data.status === 'success') {
-        refreshHealth()
+      const res = await fetch("/api/health/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service, forced: newVal }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        refreshHealth();
       }
     } catch (err) {
-      console.error("Failed to toggle breaker state:", err)
+      console.error("Failed to toggle breaker state:", err);
     }
-  }
+  };
 
   const clearUserMemory = async () => {
-    if (!window.confirm("Are you sure you want to clear this user profile memories?")) return
+    if (
+      !window.confirm(
+        "Are you sure you want to clear this user profile memories?",
+      )
+    )
+      return;
     try {
-      const res = await fetch(`/api/memories/clear?user_id=${userId}`, { method: 'POST' })
-      const data = await res.json()
-      if (data.status === 'success') {
-        setMemories([])
+      const res = await fetch(`/api/memories/clear?user_id=${userId}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setMemories([]);
       }
     } catch (err) {
-      console.error("Failed to clear memory database:", err)
+      console.error("Failed to clear memory database:", err);
     }
-  }
+  };
 
   const sendMessage = async (textToSend) => {
-    const promptText = textToSend || inputVal
-    if (!promptText.trim()) return
+    const promptText = textToSend || inputVal;
+    if (!promptText.trim()) return;
 
-    if (!textToSend) setInputVal('')
-    
+    if (!textToSend) setInputVal("");
+
     // Add user message
-    const userMsg = { role: 'user', content: promptText }
-    setMessages(prev => [...prev, userMsg])
-    setLoading(true)
+    const userMsg = { role: "user", content: promptText };
+    setMessages((prev) => [...prev, userMsg]);
+    setLoading(true);
 
     try {
-      const memoryCtx = memories.map(m => `• ${m}`).join('\n')
-      
-      const res = await fetch('/api/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const memoryCtx = memories.map((m) => `• ${m}`).join("\n");
+
+      const res = await fetch("/api/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: promptText,
           user_id: userId,
-          memory_context: memoryCtx
-        })
-      })
-      const data = await res.json()
+          memory_context: memoryCtx,
+        }),
+      });
+      const data = await res.json();
 
-      // Add assistant response
-      const assistantMsg = { 
-        role: 'assistant', 
+      const assistantMsg = {
+        role: "assistant",
         content: data.answer,
-        // Detect citations based on returned context
-        isRag: data.answer.toLowerCase().includes("embedding") || data.answer.toLowerCase().includes("document") || !data.answer.toLowerCase().includes("fallback"),
-        isMemory: memories.some(m => data.answer.toLowerCase().includes(m.split(' ')[0].toLowerCase()))
-      }
-      
-      setMessages(prev => [...prev, assistantMsg])
-      
+        route: data.route || "llm",
+        source_count: data.source_count ?? 0,
+        used_memory: Boolean(data.used_memory),
+        latency_ms: data.latency_ms ?? 0,
+        isRag: data.route === "rag",
+        isMemory: Boolean(data.used_memory),
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+
       // Update memory tags list
       if (data.memories) {
-        setMemories(data.memories)
+        setMemories(data.memories);
       } else {
-        refreshMemories()
+        refreshMemories();
       }
-      
+
       // Trigger graph data check if open
       if (graphOpen) {
         // Redraw Vis.js graph
-        setGraphOpen(false)
-        setTimeout(() => setGraphOpen(true), 50)
+        setGraphOpen(false);
+        setTimeout(() => setGraphOpen(true), 50);
       }
-
     } catch (err) {
-      console.error("Query execution failed:", err)
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "API timeout. The backend server failed to respond in time." 
-      }])
+      console.error("Query execution failed:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "API timeout. The backend server failed to respond in time.",
+        },
+      ]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   // File Upload Ingestion
   const handleFileUpload = async (e) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    setIndexing(true)
-    const formData = new FormData()
-    formData.append('user_id', userId)
+    setIndexing(true);
+    const formData = new FormData();
+    formData.append("user_id", userId);
     for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i])
+      formData.append("files", files[i]);
     }
 
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      })
-      const data = await res.json()
-      if (data.status === 'success') {
-        alert(`Successfully ingested: ${data.indexed_files.join(', ')}. Graph Index updated!`)
-        // Trigger graph redraw
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (res.status === 409) {
+        alert(data.detail?.message || "Index build already in progress.");
+        return;
+      }
+
+      if (res.status === 202) {
+        const jobId = data.job_id;
+        alert(`Upload accepted. Indexing in background (job ${jobId}).`);
+        const poll = async () => {
+          const statusRes = await fetch(
+            `/api/index-status?user_id=${encodeURIComponent(userId)}`,
+          );
+          const statusData = await statusRes.json();
+          if (statusData.status === "building") {
+            setTimeout(poll, 1500);
+            return;
+          }
+          if (statusData.status === "ready") {
+            alert(`Indexing complete for: ${data.indexed_files.join(", ")}`);
+            if (graphOpen) {
+              setGraphOpen(false);
+              setTimeout(() => setGraphOpen(true), 50);
+            }
+          } else if (statusData.status === "error") {
+            alert(statusData.error || "Indexing failed.");
+          }
+        };
+        poll();
+        return;
+      }
+
+      if (data.status === "success") {
+        alert(
+          `Successfully ingested: ${data.indexed_files.join(", ")}. Graph Index updated!`,
+        );
         if (graphOpen) {
-          setGraphOpen(false)
-          setTimeout(() => setGraphOpen(true), 50)
+          setGraphOpen(false);
+          setTimeout(() => setGraphOpen(true), 50);
         }
       } else {
-        alert(data.detail || "Upload failed.")
+        alert(data.detail || "Upload failed.");
       }
     } catch (err) {
-      console.error("Ingestion failed:", err)
-      alert("Failed to ingest files.")
+      console.error("Ingestion failed:", err);
+      alert("Failed to ingest files.");
     } finally {
-      setIndexing(false)
+      setIndexing(false);
     }
-  }
+  };
 
   // Use graph node / edge inside chat
   const handleInjectPrompt = (promptText) => {
-    setGraphOpen(false)
-    sendMessage(promptText)
-  }
+    setGraphOpen(false);
+    sendMessage(promptText);
+  };
 
   const renderStatus = (status) => {
     if (status.includes("Connected")) {
-      return <span className="w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.7)] animate-pulse" />
+      return (
+        <span className="w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.7)] animate-pulse" />
+      );
     } else if (status.includes("Fail") || status.includes("Unreachable")) {
-      return <span className="w-2.5 h-2.5 rounded-full bg-cyber-magenta shadow-[0_0_8px_rgba(255,0,229,0.7)]" />
+      return (
+        <span className="w-2.5 h-2.5 rounded-full bg-cyber-magenta shadow-[0_0_8px_rgba(255,0,229,0.7)]" />
+      );
     } else {
-      return <span className="w-2.5 h-2.5 rounded-full bg-zinc-600" />
+      return <span className="w-2.5 h-2.5 rounded-full bg-zinc-600" />;
     }
-  }
+  };
 
   return (
     <div className="h-full flex relative select-text overflow-hidden">
-      
       {/* Sidebar Trigger (Floating button) */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="absolute top-4 left-4 z-30 p-2 rounded-xl glass border border-cyber-border hover:border-cyber-cyan text-cyber-muted hover:text-cyber-cyan transition-colors"
       >
-        {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        {sidebarOpen ? (
+          <ChevronLeft className="w-4 h-4" />
+        ) : (
+          <ChevronRight className="w-4 h-4" />
+        )}
       </button>
 
       {/* Sidebar Panel */}
@@ -339,10 +424,12 @@ export default function AgentWorkspace({ userId, setUserId }) {
             <div className="p-6 pt-16 border-b border-cyber-border/50">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-cyber-cyan/15 border border-cyber-cyan/35 flex items-center justify-center font-heading font-black text-cyber-cyan">
-                  {userId ? userId.substring(0,2).toUpperCase() : 'U'}
+                  {userId ? userId.substring(0, 2).toUpperCase() : "U"}
                 </div>
                 <div>
-                  <h4 className="text-xs font-heading font-bold text-cyber-muted uppercase tracking-widest">Active workspace</h4>
+                  <h4 className="text-xs font-heading font-bold text-cyber-muted uppercase tracking-widest">
+                    Active workspace
+                  </h4>
                   <input
                     type="text"
                     value={userId}
@@ -356,20 +443,23 @@ export default function AgentWorkspace({ userId, setUserId }) {
               {/* Memory Pills List */}
               <div className="mt-4">
                 <h5 className="text-[10px] font-heading font-bold text-cyber-muted uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-cyber-cyan animate-pulse" /> Persistent Facts ({memories.length})
+                  <Sparkles className="w-3.5 h-3.5 text-cyber-cyan animate-pulse" />{" "}
+                  Persistent Facts ({memories.length})
                 </h5>
                 <div className="max-h-24 overflow-y-auto flex flex-wrap gap-1.5 p-1 pr-2">
                   {memories.map((m, idx) => (
-                    <span 
-                      key={idx} 
+                    <span
+                      key={idx}
                       className="px-2 py-0.5 rounded-full text-[10px] font-subheading bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:border-cyber-cyan transition-colors"
                       title={m}
                     >
-                      {m.length > 25 ? m.substring(0, 25) + '...' : m}
+                      {m.length > 25 ? m.substring(0, 25) + "..." : m}
                     </span>
                   ))}
                   {memories.length === 0 && (
-                    <span className="text-[10px] font-subheading text-cyber-muted italic">No facts extracted yet.</span>
+                    <span className="text-[10px] font-subheading text-cyber-muted italic">
+                      No facts extracted yet.
+                    </span>
                   )}
                 </div>
               </div>
@@ -378,29 +468,36 @@ export default function AgentWorkspace({ userId, setUserId }) {
             {/* Ingestion zone */}
             <div className="p-6 border-b border-cyber-border/50">
               <h5 className="text-[10px] font-heading font-bold text-cyber-muted uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-purple-400" /> Ingest Documents
+                <BookOpen className="w-3.5 h-3.5 text-purple-400" /> Ingest
+                Documents
               </h5>
-              
+
               <label className="flex flex-col items-center justify-center border border-dashed border-cyber-border hover:border-cyber-cyan/50 rounded-xl p-4 bg-cyber-bg/30 cursor-pointer hover:bg-cyber-cyan/5 transition-all duration-300 relative overflow-hidden group">
-                <input 
-                  type="file" 
-                  multiple 
-                  accept=".pdf,.txt" 
-                  onChange={handleFileUpload} 
-                  className="hidden" 
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.txt"
+                  onChange={handleFileUpload}
+                  className="hidden"
                   disabled={indexing}
                 />
-                
+
                 {indexing ? (
                   <div className="flex flex-col items-center py-2">
                     <RefreshCw className="w-8 h-8 text-cyber-cyan animate-spin mb-2" />
-                    <span className="text-[10px] font-heading font-bold text-cyber-cyan uppercase tracking-wider animate-pulse">Indexing graph...</span>
+                    <span className="text-[10px] font-heading font-bold text-cyber-cyan uppercase tracking-wider animate-pulse">
+                      Indexing graph...
+                    </span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center py-2 text-center">
                     <Upload className="w-6 h-6 text-cyber-muted group-hover:text-cyber-cyan group-hover:scale-110 transition-all duration-300 mb-2" />
-                    <span className="text-[10px] font-subheading font-bold text-cyber-text">Upload PDF / TXT Files</span>
-                    <span className="text-[9px] text-cyber-muted font-light mt-1">Saves to data/documents/</span>
+                    <span className="text-[10px] font-subheading font-bold text-cyber-text">
+                      Upload PDF / TXT Files
+                    </span>
+                    <span className="text-[9px] text-cyber-muted font-light mt-1">
+                      Saves to data/documents/
+                    </span>
                   </div>
                 )}
               </label>
@@ -410,10 +507,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
             <div className="p-6 border-b border-cyber-border/50">
               <div className="flex justify-between items-center mb-3">
                 <h5 className="text-[10px] font-heading font-bold text-cyber-muted uppercase tracking-widest flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-cyber-gold" /> System Health
+                  <Database className="w-3.5 h-3.5 text-cyber-gold" /> System
+                  Health
                 </h5>
-                <button 
-                  onClick={refreshHealth} 
+                <button
+                  onClick={refreshHealth}
                   className="p-1 rounded hover:bg-white/5 text-cyber-muted hover:text-white transition-colors"
                   title="Force Refresh Health"
                 >
@@ -423,14 +521,21 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
               <div className="flex flex-col gap-2">
                 {[
-                  { key: 'gemini', label: 'Gemini LLM' },
-                  { key: 'mem0', label: 'Mem0 Memory' },
-                  { key: 'neo4j', label: 'Neo4j GraphDB' }
-                ].map(svc => (
-                  <div key={svc.key} className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/[0.02] border border-cyber-border/40 text-xs">
-                    <span className="text-cyber-muted font-subheading">{svc.label}</span>
+                  { key: "gemini", label: "Gemini LLM" },
+                  { key: "mem0", label: "Mem0 Memory" },
+                  { key: "neo4j", label: "Neo4j GraphDB" },
+                ].map((svc) => (
+                  <div
+                    key={svc.key}
+                    className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/[0.02] border border-cyber-border/40 text-xs"
+                  >
+                    <span className="text-cyber-muted font-subheading">
+                      {svc.label}
+                    </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-medium font-body text-white">{health[svc.key]}</span>
+                      <span className="text-[10px] font-medium font-body text-white">
+                        {health[svc.key]}
+                      </span>
                       {renderStatus(health[svc.key])}
                     </div>
                   </div>
@@ -441,26 +546,37 @@ export default function AgentWorkspace({ userId, setUserId }) {
             {/* Resilience Testing Checkboxes */}
             <div className="p-6 border-b border-cyber-border/50">
               <h5 className="text-[10px] font-heading font-bold text-cyber-muted uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <ToggleLeft className="w-3.5 h-3.5 text-cyber-magenta" /> Fault Tolerance Testing
+                <ToggleLeft className="w-3.5 h-3.5 text-cyber-magenta" /> Fault
+                Tolerance Testing
               </h5>
 
               <div className="flex flex-col gap-2.5">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-cyber-muted">Simulate Mem0 Outage</span>
                   <button
-                    onClick={() => toggleBreaker('mem0', breakers.mem0)}
+                    onClick={() => toggleBreaker("mem0", breakers.mem0)}
                     className="text-cyber-muted hover:text-cyber-magenta transition-colors"
                   >
-                    {breakers.mem0 ? <ToggleRight className="w-6 h-6 text-cyber-magenta" /> : <ToggleLeft className="w-6 h-6" />}
+                    {breakers.mem0 ? (
+                      <ToggleRight className="w-6 h-6 text-cyber-magenta" />
+                    ) : (
+                      <ToggleLeft className="w-6 h-6" />
+                    )}
                   </button>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-cyber-muted">Simulate Neo4j Outage</span>
+                  <span className="text-cyber-muted">
+                    Simulate Neo4j Outage
+                  </span>
                   <button
-                    onClick={() => toggleBreaker('neo4j', breakers.neo4j)}
+                    onClick={() => toggleBreaker("neo4j", breakers.neo4j)}
                     className="text-cyber-muted hover:text-cyber-magenta transition-colors"
                   >
-                    {breakers.neo4j ? <ToggleRight className="w-6 h-6 text-cyber-magenta" /> : <ToggleLeft className="w-6 h-6" />}
+                    {breakers.neo4j ? (
+                      <ToggleRight className="w-6 h-6 text-cyber-magenta" />
+                    ) : (
+                      <ToggleLeft className="w-6 h-6" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -468,13 +584,13 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
             {/* Actions Panel */}
             <div className="p-6 mt-auto flex gap-3">
-              <button 
+              <button
                 onClick={clearUserMemory}
                 className="flex-1 py-2 px-3 border border-cyber-border hover:border-cyber-magenta rounded-xl text-[10px] font-heading font-bold text-cyber-muted hover:text-cyber-magenta flex items-center justify-center gap-1.5 transition-all duration-200"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Clear Memory
               </button>
-              <button 
+              <button
                 onClick={() => setMessages([])}
                 className="flex-1 py-2 px-3 border border-cyber-border hover:border-cyber-cyan rounded-xl text-[10px] font-heading font-bold text-cyber-muted hover:text-cyber-cyan flex items-center justify-center gap-1.5 transition-all duration-200"
               >
@@ -487,15 +603,16 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col h-full bg-cyber-bg relative z-10">
-        
         {/* Top Header info */}
         <div className="py-4 px-6 border-b border-cyber-border flex justify-between items-center pl-16">
           <div>
             <h2 className="text-sm font-heading font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-cyber-cyan animate-pulse" /> Inayat Workspace Chat
+              <Cpu className="w-4 h-4 text-cyber-cyan animate-pulse" /> Inayat
+              Workspace Chat
             </h2>
             <p className="text-[10px] font-subheading text-cyber-muted mt-0.5">
-              Active workspace folder: <span className="text-white">data/documents/{userId}/</span>
+              Active workspace folder:{" "}
+              <span className="text-white">data/documents/{userId}/</span>
             </p>
           </div>
 
@@ -503,22 +620,25 @@ export default function AgentWorkspace({ userId, setUserId }) {
             onClick={() => setGraphOpen(true)}
             className="flex items-center gap-2 px-4 py-2 border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan hover:text-cyber-bg text-xs font-heading font-bold rounded-xl shadow-[0_0_12px_rgba(0,240,255,0.15)] transition-all duration-300"
           >
-            <Share2 className="w-4 h-4 animate-spin-slow" /> Visualize Neural Graph
+            <Share2 className="w-4 h-4 animate-spin-slow" /> Visualize Neural
+            Graph
           </button>
         </div>
 
         {/* Message Panel Scroll Grid */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          
           {/* Welcome guide when history is empty */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto opacity-70">
               <div className="w-16 h-16 rounded-full bg-white/[0.02] border border-cyber-border/40 flex items-center justify-center mb-4 text-cyber-cyan">
                 <Brain className="w-8 h-8 text-cyber-cyan animate-pulse" />
               </div>
-              <h3 className="text-base font-heading font-bold mb-2 text-white">Agentic Workspace Initialized</h3>
+              <h3 className="text-base font-heading font-bold mb-2 text-white">
+                Agentic Workspace Initialized
+              </h3>
               <p className="text-xs text-cyber-muted leading-relaxed font-light font-body">
-                Upload your document database in the sidebar or ask questions about Rahul's ML NLP classes to trigger property graphs.
+                Upload your document database in the sidebar or ask questions
+                about Rahul's ML NLP classes to trigger property graphs.
               </p>
             </div>
           )}
@@ -530,27 +650,51 @@ export default function AgentWorkspace({ userId, setUserId }) {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
             >
-              <div className={`max-w-[75%] p-4 ${msg.role === 'user' ? 'chat-bubble-user text-white' : 'chat-bubble-ai text-cyber-text'}`}>
-                
+              <div
+                className={`max-w-[75%] p-4 ${msg.role === "user" ? "chat-bubble-user text-white" : "chat-bubble-ai text-cyber-text"}`}
+              >
                 {/* Role label header */}
                 <div className="flex justify-between items-center text-[9px] font-heading font-extrabold uppercase tracking-widest mb-1.5">
-                  <span className={msg.role === 'user' ? 'text-cyber-cyan' : 'text-green-400'}>
-                    {msg.role === 'user' ? 'You' : 'I.N.A.Y.A.T.'}
+                  <span
+                    className={
+                      msg.role === "user" ? "text-cyber-cyan" : "text-green-400"
+                    }
+                  >
+                    {msg.role === "user" ? "You" : "I.N.A.Y.A.T."}
                   </span>
-                  
+
                   {/* Citations list tags */}
-                  {msg.role === 'assistant' && (
+                  {msg.role === "assistant" && (
                     <div className="flex gap-1">
-                      {msg.isRag && <span className="bg-purple-500/20 text-purple-400 border border-purple-500/35 px-1 rounded">Graph RAG</span>}
-                      {msg.isMemory && <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/35 px-1 rounded">Mem0 Context</span>}
-                      {!msg.isRag && <span className="bg-cyber-magenta/20 text-cyber-magenta border border-cyber-magenta/35 px-1 rounded">LLM Fallback</span>}
+                      {msg.isRag && (
+                        <span className="bg-purple-500/20 text-purple-400 border border-purple-500/35 px-1 rounded">
+                          Graph RAG
+                        </span>
+                      )}
+                      {msg.isMemory && (
+                        <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/35 px-1 rounded">
+                          Mem0 Context
+                        </span>
+                      )}
+                      {msg.route === "apology" && (
+                        <span className="bg-red-500/20 text-red-400 border border-red-500/35 px-1 rounded">
+                          Degraded
+                        </span>
+                      )}
+                      {msg.route === "llm" && !msg.isRag && (
+                        <span className="bg-cyber-magenta/20 text-cyber-magenta border border-cyber-magenta/35 px-1 rounded">
+                          LLM Fallback
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
 
-                <p className="text-sm leading-relaxed font-light whitespace-pre-wrap">{msg.content}</p>
+                <p className="text-sm leading-relaxed font-light whitespace-pre-wrap">
+                  {msg.content}
+                </p>
               </div>
             </motion.div>
           ))}
@@ -562,7 +706,8 @@ export default function AgentWorkspace({ userId, setUserId }) {
               animate={{ opacity: 1 }}
               className="flex items-center gap-2 p-4 text-xs font-heading font-bold text-cyber-cyan animate-pulse"
             >
-              <Cpu className="w-4 h-4 text-cyber-cyan animate-spin" /> Thinking and recalling database records...
+              <Cpu className="w-4 h-4 text-cyber-cyan animate-spin" /> Thinking
+              and recalling database records...
             </motion.div>
           )}
 
@@ -571,10 +716,10 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
         {/* Input prompt bar footer */}
         <div className="p-4 border-t border-cyber-border bg-cyber-bg/40">
-          <form 
+          <form
             onSubmit={(e) => {
-              e.preventDefault()
-              sendMessage()
+              e.preventDefault();
+              sendMessage();
             }}
             className="flex gap-3 max-w-4xl mx-auto items-center"
           >
@@ -601,17 +746,16 @@ export default function AgentWorkspace({ userId, setUserId }) {
       <AnimatePresence>
         {graphOpen && (
           <motion.div
-            initial={{ x: '100%' }}
+            initial={{ x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'tween', duration: 0.35 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "tween", duration: 0.35 }}
             className="absolute inset-0 z-40 flex bg-cyber-bg/95 backdrop-filter backdrop-blur-md"
           >
             {/* Graph Visualizer Panel */}
             <div className="flex-1 h-full relative">
-              
               {/* Back CTA */}
-              <button 
+              <button
                 onClick={() => setGraphOpen(false)}
                 className="absolute top-4 left-4 z-50 px-4 py-2 bg-zinc-900 border border-cyber-border hover:border-cyber-cyan text-white text-xs font-heading rounded-xl shadow-lg transition-colors"
               >
@@ -643,25 +787,30 @@ export default function AgentWorkspace({ userId, setUserId }) {
                     </h4>
 
                     <div className="bg-zinc-950/60 border border-cyber-border/40 rounded-xl p-4 mt-4 max-h-96 overflow-y-auto">
-                      {selectedNode.properties && Object.keys(selectedNode.properties).map(key => (
-                        <div key={key} className="mb-3">
-                          <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">{key}</label>
-                          <span className="text-xs text-cyber-text block leading-relaxed whitespace-pre-wrap">{selectedNode.properties[key]}</span>
-                        </div>
-                      ))}
+                      {selectedNode.properties &&
+                        Object.keys(selectedNode.properties).map((key) => (
+                          <div key={key} className="mb-3">
+                            <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
+                              {key}
+                            </label>
+                            <span className="text-xs text-cyber-text block leading-relaxed whitespace-pre-wrap">
+                              {selectedNode.properties[key]}
+                            </span>
+                          </div>
+                        ))}
                     </div>
 
-                    <button 
+                    <button
                       onClick={() => {
-                        const label = selectedNode.label
-                        const props = selectedNode.properties || {}
-                        let promptText = `Tell me more about ${label}`
+                        const label = selectedNode.label;
+                        const props = selectedNode.properties || {};
+                        let promptText = `Tell me more about ${label}`;
                         if (props.text) {
-                          promptText = `From the document chunk details, tell me more about: ${props.text.substring(0, 150)}...`
+                          promptText = `From the document chunk details, tell me more about: ${props.text.substring(0, 150)}...`;
                         } else if (props.Description) {
-                          promptText = `Tell me about ${label}: ${props.Description}`
+                          promptText = `Tell me about ${label}: ${props.Description}`;
                         }
-                        handleInjectPrompt(promptText)
+                        handleInjectPrompt(promptText);
                       }}
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs flex items-center justify-center gap-1.5 mt-6 shadow-lg shadow-cyber-cyan/20 hover:scale-[1.02] transition-transform"
                     >
@@ -675,31 +824,44 @@ export default function AgentWorkspace({ userId, setUserId }) {
                     </span>
                     <div className="flex flex-col gap-2 mt-4">
                       <div>
-                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">Source Entity</label>
-                        <span className="text-xs font-semibold text-white">{selectedEdge.fromLabel}</span>
+                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">
+                          Source Entity
+                        </label>
+                        <span className="text-xs font-semibold text-white">
+                          {selectedEdge.fromLabel}
+                        </span>
                       </div>
                       <div className="text-cyber-magenta text-xs font-heading font-bold py-1">
-                        → {selectedEdge.label || 'RELATED'} →
+                        → {selectedEdge.label || "RELATED"} →
                       </div>
                       <div>
-                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">Target Entity</label>
-                        <span className="text-xs font-semibold text-white">{selectedEdge.toLabel}</span>
+                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">
+                          Target Entity
+                        </label>
+                        <span className="text-xs font-semibold text-white">
+                          {selectedEdge.toLabel}
+                        </span>
                       </div>
                     </div>
 
                     <div className="bg-zinc-950/60 border border-cyber-border/40 rounded-xl p-4 mt-4">
-                      {selectedEdge.properties && Object.keys(selectedEdge.properties).map(key => (
-                        <div key={key} className="mb-3">
-                          <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">{key}</label>
-                          <span className="text-xs text-cyber-text block leading-relaxed">{selectedEdge.properties[key]}</span>
-                        </div>
-                      ))}
+                      {selectedEdge.properties &&
+                        Object.keys(selectedEdge.properties).map((key) => (
+                          <div key={key} className="mb-3">
+                            <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
+                              {key}
+                            </label>
+                            <span className="text-xs text-cyber-text block leading-relaxed">
+                              {selectedEdge.properties[key]}
+                            </span>
+                          </div>
+                        ))}
                     </div>
 
-                    <button 
+                    <button
                       onClick={() => {
-                        const promptText = `Explain the connection: ${selectedEdge.fromLabel} —[${selectedEdge.label || 'RELATED'}]—> ${selectedEdge.toLabel}`
-                        handleInjectPrompt(promptText)
+                        const promptText = `Explain the connection: ${selectedEdge.fromLabel} —[${selectedEdge.label || "RELATED"}]—> ${selectedEdge.toLabel}`;
+                        handleInjectPrompt(promptText);
                       }}
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs flex items-center justify-center gap-1.5 mt-6 shadow-lg shadow-cyber-cyan/20 hover:scale-[1.02] transition-transform"
                     >
@@ -724,5 +886,5 @@ export default function AgentWorkspace({ userId, setUserId }) {
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }

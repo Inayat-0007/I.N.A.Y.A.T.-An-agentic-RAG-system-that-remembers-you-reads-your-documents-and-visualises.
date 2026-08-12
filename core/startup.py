@@ -1,29 +1,24 @@
 """Startup validation and service warm-up.
 
-Meant to be called once at application boot (top of ``app.py``).
-Validates that critical environment variables exist and optionally runs
-a full health sweep.
+Orchestrates environment loading, logging, and health probes at boot.
 """
 
-import os
-import sys
+from __future__ import annotations
+
 import atexit
 import logging
-from typing import Tuple, List, Dict
+from typing import Dict, List, Tuple
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
-from core.logging_config import setup_logging
 from core.health import HealthMonitor
+from core.logging_config import setup_logging
+from core.settings import clear_settings_cache, get_settings
 
 logger = logging.getLogger("inayat")
 
-# Environment variables that MUST exist for the app to function at all
-CRITICAL_VARS = [
-    "GEMINI_API_KEY",
-]
-
-# Variables that are strongly recommended but non-fatal if missing
+CRITICAL_VARS = ["GEMINI_API_KEY"]
 RECOMMENDED_VARS = [
     "MEM0_API_KEY",
     "NEO4J_URI",
@@ -33,11 +28,9 @@ RECOMMENDED_VARS = [
 
 
 def load_env() -> None:
-    """Load ``.env`` file into ``os.environ``.
-
-    Call this before any other startup step.
-    """
+    """Load ``.env`` file into ``os.environ`` and refresh settings cache."""
     load_dotenv(override=False)
+    clear_settings_cache()
 
 
 def validate_env() -> Tuple[bool, List[str], List[str]]:
@@ -46,21 +39,17 @@ def validate_env() -> Tuple[bool, List[str], List[str]]:
     Returns:
         Tuple of (critical_ok, missing_critical, missing_recommended).
     """
-    missing_critical = [v for v in CRITICAL_VARS if not os.getenv(v)]
-    missing_recommended = [v for v in RECOMMENDED_VARS if not os.getenv(v)]
+    try:
+        settings = get_settings()
+    except ValidationError:
+        return False, list(CRITICAL_VARS), list(RECOMMENDED_VARS)
 
+    missing_recommended = settings.missing_recommended_vars()
     if missing_recommended:
         logger.warning(
             "Recommended env vars missing (features degraded): %s",
             ", ".join(missing_recommended),
         )
-
-    if missing_critical:
-        logger.error(
-            "CRITICAL env vars missing — app cannot start: %s",
-            ", ".join(missing_critical),
-        )
-        return False, missing_critical, missing_recommended
 
     return True, [], missing_recommended
 
@@ -88,14 +77,34 @@ def run_startup() -> Tuple[bool, Dict[str, str], List[str]]:
     if missing_rec:
         warnings.append(f"Missing recommended vars: {', '.join(missing_rec)}")
 
-    # Run health probes
     monitor = HealthMonitor()
     statuses = monitor.run_all()
 
-    # Register graceful shutdown for Neo4j driver
     from core.graph_store import close_driver
 
     atexit.register(close_driver)
 
     logger.info("Startup complete.  Health: %s", statuses)
     return True, statuses, warnings
+
+
+def enforce_critical_env_or_exit() -> None:
+    """Refuse process start when critical configuration is missing.
+
+    Prints a clear error to stderr and exits with code 1.
+    """
+    import sys
+
+    load_env()
+    setup_logging()
+    ok, missing_crit, _ = validate_env()
+    if ok:
+        return
+
+    message = (
+        "FATAL: Cannot start I.N.A.Y.A.T. — missing critical environment variable(s): "
+        f"{', '.join(missing_crit)}. "
+        "Set GEMINI_API_KEY in your .env file or environment."
+    )
+    print(message, file=sys.stderr)
+    sys.exit(1)

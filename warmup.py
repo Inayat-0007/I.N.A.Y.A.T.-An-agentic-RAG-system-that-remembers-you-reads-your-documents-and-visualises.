@@ -58,7 +58,7 @@ def warmup() -> bool:
         logger.warning("  Neo4j keepalive query   -> FAILED (instance may be paused)")
 
     # 4. Pre-build index (optional — makes first user query faster)
-    from core.agent import get_index
+    from core.ingest import get_index
 
     idx = safe_execute(get_index, fallback=None)
     if idx:

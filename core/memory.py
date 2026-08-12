@@ -5,14 +5,15 @@ memory.  Every call is protected by ``safe_execute`` so a Mem0 outage
 never crashes the app — the agent simply answers without personalisation.
 """
 
-import os
 import logging
 import threading
 from typing import List, Optional
 
 from mem0 import MemoryClient
 
-from core.resilience import safe_execute, resilient_call, CircuitBreaker
+from core.identity import UserId
+from core.resilience import CircuitBreaker, safe_execute
+from core.settings import get_settings
 
 logger = logging.getLogger("inayat")
 
@@ -41,7 +42,7 @@ def _get_client() -> Optional[MemoryClient]:
         if _client is not None:
             return _client
 
-        api_key = os.getenv("MEM0_API_KEY")
+        api_key = get_settings().mem0_api_key
         if not api_key:
             logger.warning("MEM0_API_KEY not set — memory features disabled.")
             return None
@@ -60,6 +61,11 @@ def _get_client() -> Optional[MemoryClient]:
 # ---------------------------------------------------------------------------
 
 
+def _mem0_user_id(user_id: str) -> str:
+    """Validate Mem0 tenant id; preserve string semantics (no renaming)."""
+    return UserId.parse(user_id).value
+
+
 def add_memory(user_id: str, text: str) -> bool:
     """Store a user fact / interaction in Mem0.
 
@@ -70,6 +76,7 @@ def add_memory(user_id: str, text: str) -> bool:
     Returns:
         ``True`` on success, ``False`` on any failure.
     """
+    user_id = _mem0_user_id(user_id)
     if not _cb.allow_request():
         logger.debug("Mem0 circuit breaker OPEN — skipping add.")
         return False
@@ -98,6 +105,7 @@ def get_memories(user_id: str) -> List[str]:
     Returns:
         A list of memory strings (may be empty on error).
     """
+    user_id = _mem0_user_id(user_id)
     if not _cb.allow_request():
         return []
 
@@ -135,6 +143,7 @@ def search_memories(user_id: str, query: str, limit: int = 5) -> List[str]:
     Returns:
         Matching memory strings.
     """
+    user_id = _mem0_user_id(user_id)
     if not _cb.allow_request():
         return []
 
@@ -169,6 +178,7 @@ def clear_memories(user_id: str) -> bool:
     Returns:
         ``True`` on success.
     """
+    user_id = _mem0_user_id(user_id)
     client = _get_client()
     if client is None:
         return False

@@ -6,15 +6,15 @@ resilient ``run_cypher`` helper.  Also provides the
 ``PropertyGraphIndex``.
 """
 
-import os
 import logging
 import threading
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from neo4j import GraphDatabase, Driver
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
+from neo4j import Driver, GraphDatabase
 
-from core.resilience import safe_execute, resilient_call, CircuitBreaker
+from core.resilience import CircuitBreaker, resilient_call, safe_execute
+from core.settings import InayatSettings, get_settings
 
 logger = logging.getLogger("inayat")
 
@@ -28,18 +28,16 @@ _cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 # ---------------------------------------------------------------------------
 
 
-def _get_credentials() -> tuple:
-    """Return (uri, username, password) from env vars.
+def _get_credentials(settings: Optional[InayatSettings] = None) -> tuple[str, str, str]:
+    """Return (uri, username, password) from application settings.
 
     Raises:
         ValueError: When mandatory vars are missing.
     """
-    uri = os.getenv("NEO4J_URI")
-    user = os.getenv("NEO4J_USERNAME", "neo4j")
-    pwd = os.getenv("NEO4J_PASSWORD")
-    if not uri or not pwd:
+    cfg = settings or get_settings()
+    if not cfg.neo4j_uri or not cfg.neo4j_password:
         raise ValueError("NEO4J_URI / NEO4J_PASSWORD missing from environment.")
-    return uri, user, pwd
+    return cfg.neo4j_uri, cfg.neo4j_username, cfg.neo4j_password
 
 
 def get_driver() -> Optional[Driver]:
@@ -183,98 +181,8 @@ def ping_neo4j() -> bool:
     return True
 
 
-def get_visualization_data(user_id: str = "default") -> dict:
-    """Retrieve nodes and edges from Neo4j belonging to a specific user, falling back to a profile-customised demo graph."""
-    query_str = """
-    MATCH (c:Chunk {user_id: $user_id})
-    MATCH (s)-[r]->(t)
-    WHERE (s = c OR t = c) 
-       OR EXISTS { MATCH (c)-[*1..2]-(s) }
-       OR EXISTS { MATCH (c)-[*1..2]-(t) }
-    RETURN 
-        elementId(s) AS source_id, 
-        s.name AS source_name, 
-        labels(s) AS source_labels,
-        properties(s) AS source_props,
-        elementId(t) AS target_id, 
-        t.name AS target_name, 
-        labels(t) AS target_labels,
-        properties(t) AS target_props,
-        type(r) AS rel_type,
-        properties(r) AS rel_props
-    LIMIT 120
-    """
-    records = run_cypher(query_str, {"user_id": user_id})
-
-    if records:
-        nodes = {}
-        edges = []
-
-        def clean_props(props):
-            if not props:
-                return {}
-            cleaned = {}
-            for k, v in props.items():
-                if k in ["embedding", "_node_content"]:
-                    continue
-                if k == "text" and isinstance(v, str) and len(v) > 1000:
-                    cleaned[k] = v[:1000] + "..."
-                else:
-                    cleaned[k] = v
-            return cleaned
-
-        for rec in records:
-            s_id = rec.get("source_id")
-            s_props = clean_props(rec.get("source_props"))
-            s_name = rec.get("source_name")
-            s_labels = rec.get("source_labels", ["Entity"])
-            s_label = s_labels[0] if s_labels else "Entity"
-
-            if not s_name:
-                if s_label == "Chunk" and s_props.get("file_name"):
-                    s_name = f"Chunk: {s_props.get('file_name')}"
-                else:
-                    s_name = f"{s_label} ({str(s_id)[:6]})"
-
-            t_id = rec.get("target_id")
-            t_props = clean_props(rec.get("target_props"))
-            t_name = rec.get("target_name")
-            t_labels = rec.get("target_labels", ["Entity"])
-            t_label = t_labels[0] if t_labels else "Entity"
-
-            if not t_name:
-                if t_label == "Chunk" and t_props.get("file_name"):
-                    t_name = f"Chunk: {t_props.get('file_name')}"
-                else:
-                    t_name = f"{t_label} ({str(t_id)[:6]})"
-
-            rel_type = rec.get("rel_type") or "RELATED"
-            rel_props = clean_props(rec.get("rel_props"))
-
-            if s_id not in nodes:
-                nodes[s_id] = {
-                    "id": s_id,
-                    "label": s_name,
-                    "group": s_label,
-                    "properties": s_props,
-                    "title": f"<b>{s_label}</b>: {s_name}",
-                }
-            if t_id not in nodes:
-                nodes[t_id] = {
-                    "id": t_id,
-                    "label": t_name,
-                    "group": t_label,
-                    "properties": t_props,
-                    "title": f"<b>{t_label}</b>: {t_name}",
-                }
-
-            edges.append(
-                {"from": s_id, "to": t_id, "label": rel_type, "properties": rel_props}
-            )
-
-        return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
-
-    # Mock fallback data customized for the active profile
+def _mock_visualization_graph(user_id: str = "default") -> dict:
+    """Return profile-customised demo graph when live data is unavailable."""
     prefix = f"{user_id}'s " if user_id and user_id.lower() != "default" else ""
     nodes = [
         {
@@ -288,10 +196,10 @@ def get_visualization_data(user_id: str = "default") -> dict:
         },
         {
             "id": 2,
-            "label": "Gemini 1.5 Flash",
+            "label": "Gemini Flash Lite",
             "group": "LLM",
             "properties": {
-                "Model": "gemini-3.1-flash-lite",
+                "Model": "gemini-flash-lite-latest",
                 "Role": "Generative Language Model",
                 "Provider": "Google Gemini API via Google AI Studio",
                 "Wrapper": "ResilientGoogleGenAI for self-healing completions.",
@@ -391,3 +299,120 @@ def get_visualization_data(user_id: str = "default") -> dict:
         },
     ]
     return {"nodes": nodes, "edges": edges, "is_mock": True}
+
+
+def _node_allowed_for_user(labels: List[str], props: dict, user_id: str) -> bool:
+    """Return True when a graph node may be shown for the given user."""
+    label_list = labels or ["Entity"]
+    if "Chunk" in label_list:
+        return props.get("user_id") == user_id
+    if "Entity" in label_list:
+        return True
+    node_user = props.get("user_id")
+    return node_user in (None, user_id)
+
+
+def get_visualization_data(user_id: str = "default") -> dict:
+    """Retrieve user-scoped nodes/edges; mock graph when Neo4j is unavailable."""
+    if not _cb.allow_request():
+        logger.debug("Neo4j circuit OPEN — returning mock visualization for %s.", user_id)
+        return _mock_visualization_graph(user_id)
+
+    query_str = """
+    MATCH (c:Chunk {user_id: $user_id})
+    MATCH (s)-[r]->(t)
+    WHERE (s = c OR t = c)
+       OR EXISTS { MATCH (c)-[*1..2]-(s) }
+       OR EXISTS { MATCH (c)-[*1..2]-(t) }
+    RETURN
+        elementId(s) AS source_id,
+        s.name AS source_name,
+        labels(s) AS source_labels,
+        properties(s) AS source_props,
+        elementId(t) AS target_id,
+        t.name AS target_name,
+        labels(t) AS target_labels,
+        properties(t) AS target_props,
+        type(r) AS rel_type,
+        properties(r) AS rel_props
+    LIMIT 120
+    """
+    records = run_cypher(query_str, {"user_id": user_id})
+
+    if not records:
+        return _mock_visualization_graph(user_id)
+
+    nodes: dict = {}
+    edges: list = []
+
+    def clean_props(props: Optional[dict]) -> dict:
+        if not props:
+            return {}
+        cleaned = {}
+        for key, value in props.items():
+            if key in ("embedding", "_node_content"):
+                continue
+            if key == "text" and isinstance(value, str) and len(value) > 1000:
+                cleaned[key] = value[:1000] + "..."
+            else:
+                cleaned[key] = value
+        return cleaned
+
+    for rec in records:
+        s_id = rec.get("source_id")
+        s_props = clean_props(rec.get("source_props"))
+        s_labels = rec.get("source_labels", ["Entity"])
+        s_label = s_labels[0] if s_labels else "Entity"
+
+        t_id = rec.get("target_id")
+        t_props = clean_props(rec.get("target_props"))
+        t_labels = rec.get("target_labels", ["Entity"])
+        t_label = t_labels[0] if t_labels else "Entity"
+
+        if not _node_allowed_for_user(s_labels, s_props, user_id):
+            continue
+        if not _node_allowed_for_user(t_labels, t_props, user_id):
+            continue
+
+        s_name = rec.get("source_name")
+        if not s_name:
+            if s_label == "Chunk" and s_props.get("file_name"):
+                s_name = f"Chunk: {s_props.get('file_name')}"
+            else:
+                s_name = f"{s_label} ({str(s_id)[:6]})"
+
+        t_name = rec.get("target_name")
+        if not t_name:
+            if t_label == "Chunk" and t_props.get("file_name"):
+                t_name = f"Chunk: {t_props.get('file_name')}"
+            else:
+                t_name = f"{t_label} ({str(t_id)[:6]})"
+
+        rel_type = rec.get("rel_type") or "RELATED"
+        rel_props = clean_props(rec.get("rel_props"))
+
+        if s_id not in nodes:
+            nodes[s_id] = {
+                "id": s_id,
+                "label": s_name,
+                "group": s_label,
+                "properties": s_props,
+                "title": f"<b>{s_label}</b>: {s_name}",
+            }
+        if t_id not in nodes:
+            nodes[t_id] = {
+                "id": t_id,
+                "label": t_name,
+                "group": t_label,
+                "properties": t_props,
+                "title": f"<b>{t_label}</b>: {t_name}",
+            }
+
+        edges.append(
+            {"from": s_id, "to": t_id, "label": rel_type, "properties": rel_props}
+        )
+
+    if not nodes:
+        return _mock_visualization_graph(user_id)
+
+    return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}

@@ -14,8 +14,9 @@ import streamlit as st
 from typing import Dict, List
 
 # ── Bootstrap (must happen before any other core import) ──────────────
-from core.startup import run_startup
+from core.startup import enforce_critical_env_or_exit, run_startup
 
+enforce_critical_env_or_exit()
 _ok, _health, _warnings = run_startup()
 logger = logging.getLogger("inayat")
 
@@ -301,6 +302,13 @@ def _render_sidebar() -> None:
             label_visibility="collapsed",
         )
         if name != st.session_state.user_id:
+            from core.identity import InvalidUserId, UserId
+
+            try:
+                UserId.parse(name)
+            except InvalidUserId as exc:
+                st.error(str(exc))
+                name = st.session_state.user_id or "default"
             if st.session_state.user_id:
                 st.session_state[f"messages_{st.session_state.user_id}"] = (
                     st.session_state.messages
@@ -321,23 +329,19 @@ def _render_sidebar() -> None:
             label_visibility="collapsed",
         )
         if uploaded_files:
-            import os
+            from core.ingest import build_index, save_uploads
 
-            user_doc_dir = os.path.join("data", "documents", st.session_state.user_id)
-            os.makedirs(user_doc_dir, exist_ok=True)
-            new_file_saved = False
-            for f in uploaded_files:
-                fpath = os.path.join(user_doc_dir, f.name)
-                if not os.path.exists(fpath):
-                    with open(fpath, "wb") as out_f:
-                        out_f.write(f.getbuffer())
-                    new_file_saved = True
-                    st.success(f"Saved {f.name}")
+            payloads = [(f.name, f.getbuffer().tobytes()) for f in uploaded_files]
+            try:
+                saved = save_uploads(
+                    st.session_state.user_id, payloads, overwrite=False
+                )
+            except Exception as exc:
+                st.error(str(exc))
+                saved = []
 
-            if new_file_saved:
+            if saved:
                 with st.spinner("Indexing new files..."):
-                    from core.agent import build_index
-
                     build_index(st.session_state.user_id)
                     st.success("Graph Index updated!")
                     st.rerun()
@@ -379,25 +383,45 @@ def _render_sidebar() -> None:
         for w in st.session_state.startup_warnings:
             st.warning(w, icon="⚠️")
 
-        # Resilience Testing Panel
+        # Resilience Testing Panel (demo mode only)
         st.markdown("---")
         st.markdown("##### 🧪 Resilience Testing")
 
+        from core.resilience import DemoModeRequired, set_breaker_forced_open
+        from core.settings import get_settings
+
+        demo_mode = get_settings().demo_mode
         fail_mem0 = st.checkbox(
-            "🔥 Force Fail Mem0", value=is_mem_forced, key="resilience_fail_mem0"
+            "🔥 Force Fail Mem0",
+            value=is_mem_forced,
+            key="resilience_fail_mem0",
+            disabled=not demo_mode,
         )
-        if fail_mem0 != is_mem_forced:
-            mem._cb.forced_open = fail_mem0
-            st.rerun()
+        if demo_mode and fail_mem0 != is_mem_forced:
+            try:
+                set_breaker_forced_open(mem._cb, fail_mem0, service="Mem0")
+            except DemoModeRequired as exc:
+                st.error(str(exc))
+            else:
+                st.rerun()
 
         fail_neo4j = st.checkbox(
-            "🔥 Force Fail Neo4j", value=is_graph_forced, key="resilience_fail_neo4j"
+            "🔥 Force Fail Neo4j",
+            value=is_graph_forced,
+            key="resilience_fail_neo4j",
+            disabled=not demo_mode,
         )
-        if fail_neo4j != is_graph_forced:
-            gs._cb.forced_open = fail_neo4j
-            st.rerun()
+        if demo_mode and fail_neo4j != is_graph_forced:
+            try:
+                set_breaker_forced_open(gs._cb, fail_neo4j, service="Neo4j")
+            except DemoModeRequired as exc:
+                st.error(str(exc))
+            else:
+                st.rerun()
 
-        if fail_mem0 or fail_neo4j:
+        if not demo_mode:
+            st.caption("Set INAYAT_DEMO_MODE=true to enable circuit breaker demo toggles.")
+        elif fail_mem0 or fail_neo4j:
             st.warning(
                 "Circuit breaker(s) forced OPEN. Systems running in degraded mode."
             )
@@ -530,10 +554,17 @@ def main() -> None:
                 label_visibility="collapsed",
             )
             if st.button("🚀 Enter Agentic Workspace", use_container_width=True):
+                from core.identity import InvalidUserId, UserId
+
                 if name_input.strip():
-                    st.session_state.user_id = name_input.strip()
-                    st.query_params["user"] = name_input.strip()
-                    st.rerun()
+                    try:
+                        UserId.parse(name_input.strip())
+                    except InvalidUserId as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state.user_id = name_input.strip()
+                        st.query_params["user"] = name_input.strip()
+                        st.rerun()
                 else:
                     st.warning("Please enter a name to proceed.")
 
@@ -583,7 +614,7 @@ def main() -> None:
     if "index_warmed" not in st.session_state:
         with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
             try:
-                from core.agent import get_index
+                from core.ingest import get_index
 
                 get_index()
                 st.session_state.index_warmed = True
@@ -1142,14 +1173,32 @@ def main() -> None:
             st.markdown("<div class='thinking'>Thinking…</div>", unsafe_allow_html=True)
 
         # Query agent
-        from core.agent import query as agent_query
+        from core.agent import query_detailed
+        from core.conversation import append_turn
+        from core.schemas import QueryInput
 
-        answer = agent_query(
-            user_prompt, user_id=st.session_state.user_id, memory_context=memory_ctx
+        result = query_detailed(
+            QueryInput(
+                question=user_prompt,
+                user_id=st.session_state.user_id,
+                memory_context=memory_ctx,
+            )
         )
+        answer = result.answer
+        append_turn(st.session_state.user_id, "user", user_prompt)
+        append_turn(st.session_state.user_id, "assistant", answer)
 
         # Append answer
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+                "route": result.route,
+                "source_count": result.source_count,
+                "used_memory": result.used_memory,
+                "latency_ms": result.latency_ms,
+            }
+        )
 
         # Keep window clean
         if len(st.session_state.messages) > 20:

@@ -1,32 +1,29 @@
-"""Gemini LLM and Embedding model initialisation.
+"""Gemini LLM and embedding model initialisation.
 
-Sets the LlamaIndex global ``Settings`` so that every index and query engine
-automatically uses Gemini 1.5 Flash for generation and ``embedding-001``
-for vector embeddings.  No key is ever hardcoded — everything comes from
-``os.getenv``.
+Configures LlamaIndex global ``Settings`` for generation and embeddings.
+This module must not index documents or answer queries.
 """
 
-import os
+from __future__ import annotations
+
+import asyncio
 import logging
 import time
-import asyncio
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
 from llama_index.core import Settings
-from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
+from llama_index.llms.google_genai import GoogleGenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from core.resilience import resilient_call
+from core.settings import InayatSettings, get_settings
 
 logger = logging.getLogger("inayat")
 
-_MODEL_NAME = "gemini-flash-lite-latest"
-_EMBED_MODEL = "gemini-embedding-001"
-
 
 class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
-    """Subclass of GoogleGenAIEmbedding with exponential backoff retries and rate-limiting."""
+    """GoogleGenAIEmbedding with exponential backoff retries and rate-limiting."""
 
     def _get_text_embedding(self, text: str) -> List[float]:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
@@ -78,7 +75,7 @@ class ResilientGoogleGenAIEmbedding(GoogleGenAIEmbedding):
 
 
 class ResilientGoogleGenAI(GoogleGenAI):
-    """Subclass of GoogleGenAI with exponential backoff retries and rate-limiting."""
+    """GoogleGenAI with exponential backoff retries and rate-limiting."""
 
     def complete(self, prompt: str, **kwargs: Any) -> Any:
         from tenacity import Retrying, stop_after_attempt, wait_exponential
@@ -129,74 +126,53 @@ class ResilientGoogleGenAI(GoogleGenAI):
                 return await super().achat(messages, **kwargs)
 
 
-def _get_api_key() -> str:
-    """Return the Gemini API key or raise."""
-    key = os.getenv("GEMINI_API_KEY")
-    if not key:
-        raise ValueError("GEMINI_API_KEY is missing from the environment.")
-    return key
-
-
-def get_gemini_llm(temperature: float = 0.25) -> ResilientGoogleGenAI:
-    """Create a Gemini LLM instance.
-
-    Args:
-        temperature: Sampling temperature (0 = deterministic, 1 = creative).
-
-    Returns:
-        A ``ResilientGoogleGenAI`` LLM ready for use.
-    """
+def get_gemini_llm(
+    temperature: float = 0.25,
+    settings: Optional[InayatSettings] = None,
+) -> ResilientGoogleGenAI:
+    """Create a Gemini LLM instance from settings."""
+    cfg = settings or get_settings()
     return ResilientGoogleGenAI(
-        model=_MODEL_NAME,
-        api_key=_get_api_key(),
+        model=cfg.llm_model,
+        api_key=cfg.gemini_api_key,
         temperature=temperature,
     )
 
 
-def get_gemini_embedding() -> ResilientGoogleGenAIEmbedding:
-    """Create a Gemini embedding model instance.
-
-    Returns:
-        A ``ResilientGoogleGenAIEmbedding`` configured with the project embedding model.
-    """
+def get_gemini_embedding(
+    settings: Optional[InayatSettings] = None,
+) -> ResilientGoogleGenAIEmbedding:
+    """Create a Gemini embedding model instance from settings."""
+    cfg = settings or get_settings()
     return ResilientGoogleGenAIEmbedding(
-        model_name=_EMBED_MODEL,
-        api_key=_get_api_key(),
+        model_name=cfg.embed_model,
+        api_key=cfg.gemini_api_key,
     )
 
 
-def configure_llama_settings() -> None:
-    """Set the LlamaIndex global ``Settings`` to use Gemini.
-
-    Call once at application start.  Subsequent LlamaIndex operations
-    (indexing, querying) will automatically pick up these models.
-    """
-    Settings.llm = get_gemini_llm()
-    Settings.embed_model = get_gemini_embedding()
-    Settings.chunk_size = 512
-    Settings.chunk_overlap = 64
+def configure_llama_settings(settings: Optional[InayatSettings] = None) -> None:
+    """Set LlamaIndex global ``Settings`` from application configuration."""
+    cfg = settings or get_settings()
+    Settings.llm = get_gemini_llm(settings=cfg)
+    Settings.embed_model = get_gemini_embedding(settings=cfg)
+    Settings.chunk_size = cfg.chunk_size
+    Settings.chunk_overlap = cfg.chunk_overlap
     logger.info(
-        "LlamaIndex Settings configured → LLM=%s  Embed=%s",
-        _MODEL_NAME,
-        _EMBED_MODEL,
+        "LlamaIndex Settings configured → LLM=%s  Embed=%s  chunk=%s/%s",
+        cfg.llm_model,
+        cfg.embed_model,
+        cfg.chunk_size,
+        cfg.chunk_overlap,
     )
 
 
 @resilient_call(max_attempts=2, min_wait=1, max_wait=5)
 def ping_gemini() -> bool:
-    """Send a tiny prompt to Gemini to verify the API key works.
-
-    Returns:
-        True on success.
-
-    Raises:
-        Exception: Propagated on failure (handled by resilient_call retries).
-    """
-    from llama_index.llms.google_genai import GoogleGenAI
-
+    """Send a tiny prompt to Gemini to verify the API key works."""
+    cfg = get_settings()
     llm = GoogleGenAI(
-        model=_MODEL_NAME,
-        api_key=_get_api_key(),
+        model=cfg.llm_model,
+        api_key=cfg.gemini_api_key,
         temperature=0.25,
     )
     resp = llm.complete("Say OK")

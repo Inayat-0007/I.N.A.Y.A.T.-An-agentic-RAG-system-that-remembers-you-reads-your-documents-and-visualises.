@@ -177,3 +177,40 @@ def safe_execute(
             exc_info=True,
         )
         return fallback
+
+
+# ---------------------------------------------------------------------------
+# Demo-gated circuit breaker controls (HOW_TO_FIX §0.3 rule 4)
+# ---------------------------------------------------------------------------
+
+
+class DemoModeRequired(PermissionError):
+    """Raised when forced_open is requested without INAYAT_DEMO_MODE=true."""
+
+
+def set_breaker_forced_open(
+    breaker: CircuitBreaker, forced: bool, *, service: str = ""
+) -> None:
+    """Set ``forced_open`` on a breaker when demo mode is enabled.
+
+    Direct assignment to ``breaker.forced_open`` is discouraged; use this helper
+    so the demo script and API share one env-gated code path.
+    """
+    if forced:
+        try:
+            from core.settings import get_settings
+
+            if not get_settings().demo_mode:
+                label = service or "circuit breaker"
+                raise DemoModeRequired(
+                    f"{label} demo toggles require INAYAT_DEMO_MODE=true."
+                )
+        except DemoModeRequired:
+            raise
+        except Exception:
+            raise DemoModeRequired(
+                f"{service or 'Circuit breaker'} demo toggles require "
+                "INAYAT_DEMO_MODE=true and valid configuration."
+            ) from None
+    breaker.forced_open = forced
+

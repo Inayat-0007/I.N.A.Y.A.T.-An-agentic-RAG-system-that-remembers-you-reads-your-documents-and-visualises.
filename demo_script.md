@@ -7,8 +7,9 @@ This document is your reference guide for presenting the project to examiners or
 ## ⚡ Step 1: Pre-Demo Preparation
 
 1. **API Keys**: Make sure your `.env` file contains valid API keys for Gemini, Mem0, and Neo4j.
-2. **Neo4j Status**: Check that your Neo4j AuraDB instance is running (not paused).
-3. **Documents**: Put at least one PDF (e.g. college notes, reference document) in `data/documents/`. If none are present, the activator script will create a sample text document automatically.
+2. **Demo mode**: Set `INAYAT_DEMO_MODE=true` in `.env` (or use `activate.ps1`, which enables it) so Scene 5 circuit-breaker toggles work in the sidebar.
+3. **Neo4j Status**: Check that your Neo4j AuraDB instance is running (not paused).
+4. **Documents**: Put at least one PDF (e.g. college notes, reference document) in `data/documents/`. If none are present, the activator script will create a sample text document automatically.
 
 ---
 

@@ -1,132 +1,135 @@
-"""LlamaIndex RAG agent with PropertyGraphIndex over Neo4j.
+"""Agent query engine: retrieve context and generate answers.
 
-Builds (or reloads) the property-graph index from PDFs in ``data/documents/``,
-connects it to Neo4j for entity storage, and exposes a ``query()`` function
-that the Streamlit UI calls for every user message.
-
-Graceful degradation:
-  • If Neo4j or document loading fails → fallback to pure Gemini chat.
-  • If Gemini itself is down → return an apologetic string.
+Answers user questions via RAG with LLM fallback. This module must not
+serve HTTP, Streamlit widgets, write uploads, or build indices directly.
 """
 
-import os
+from __future__ import annotations
+
 import logging
-import threading
-from pathlib import Path
+import time
 from typing import Optional
 
-from llama_index.core import (
-    PropertyGraphIndex,
-    SimpleDirectoryReader,
-    Settings,
-)
-
+from core.ingest import get_index
 from core.llm_setup import configure_llama_settings, get_gemini_llm
-from core.graph_store import get_neo4j_property_graph_store
+from core.observability import trace_span
 from core.resilience import safe_execute
+from core.schemas import QueryInput, QueryResult
+from core.settings import get_settings
 
 logger = logging.getLogger("inayat")
 
-_DOC_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "documents"
+_DISCLAIMERS = (
+    "does not contain",
+    "no information",
+    "don't have",
+    "not mentioned",
+    "not clear",
+    "does not mention",
+    "cannot find",
 )
 
-# Dictionary cache for user-specific indices
-_indices: dict = {}
-_indices_lock = threading.Lock()
+_APOLOGY = (
+    "I'm sorry, I'm having trouble connecting to my services right now. "
+    "Please try again in a moment."
+)
 
 
-# ---------------------------------------------------------------------------
-# Index lifecycle
-# ---------------------------------------------------------------------------
+def _augment_prompt(question: str, memory_context: str) -> str:
+    if memory_context:
+        return (
+            "You are I.N.A.Y.A.T., an intelligent AI assistant.\n"
+            f"Here is what you remember about this user:\n{memory_context}\n\n"
+            f"User question: {question}"
+        )
+    return question
 
 
-def _has_documents(user_id: str = "default") -> bool:
-    """Return True when the user's documents directory contains at least one file."""
-    user_dir = os.path.join(_DOC_ROOT, user_id)
-    if not os.path.isdir(user_dir):
-        return False
-    files = [f for f in os.listdir(user_dir) if not f.startswith(".")]
-    return len(files) > 0
+def query_detailed(inp: QueryInput) -> QueryResult:
+    """Answer a user question via RAG with structured result metadata.
 
+    Flow:
+        1. PropertyGraphIndex query engine (user-scoped metadata filter).
+        2. Direct Gemini completion on insufficient RAG.
+        3. Static apology when Gemini is unavailable.
 
-def build_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
-    """Build a new PropertyGraphIndex from the user's documents folder.
-
-    Side effects:
-        Calls ``configure_llama_settings()`` to ensure the global LLM and
-        embedding models are set before indexing.
+    Args:
+        inp: Validated query input.
 
     Returns:
-        The constructed index, or ``None`` on failure.
+        ``QueryResult`` with route, timing, and source metadata.
     """
-    configure_llama_settings()
-    graph_store = get_neo4j_property_graph_store()
-    if graph_store is None:
-        logger.warning("Neo4j graph store unavailable — cannot build index.")
-        return None
+    user = inp.resolved_user()
+    settings = get_settings()
+    started = time.perf_counter()
+    augmented = _augment_prompt(inp.question, inp.memory_context)
+    used_memory = bool(inp.memory_context.strip())
 
-    user_dir = os.path.join(_DOC_ROOT, user_id)
-    os.makedirs(user_dir, exist_ok=True)
+    with trace_span("agent.query", user_id=user.value):
+        configure_llama_settings(settings)
+        index = get_index(user.value)
 
-    if not _has_documents(user_id):
-        logger.info("No documents in %s — loading existing graph index.", user_dir)
-        try:
-            _index = PropertyGraphIndex.from_existing(
-                property_graph_store=graph_store,
+        if index is not None:
+
+            def _rag_query() -> Optional[tuple[str, int]]:
+                from llama_index.core.vector_stores import MetadataFilter, MetadataFilters
+
+                filters = MetadataFilters(
+                    filters=[MetadataFilter(key="user_id", value=user.value)]
+                )
+                engine = index.as_query_engine(
+                    include_text=True,
+                    similarity_top_k=settings.similarity_top_k,
+                    filters=filters,
+                )
+                response = engine.query(augmented)
+                res_str = str(response)
+                source_nodes = getattr(response, "source_nodes", None) or []
+                source_count = len(source_nodes)
+
+                if not source_nodes or any(
+                    phrase in res_str.lower() for phrase in _DISCLAIMERS
+                ):
+                    logger.info("RAG context insufficient — falling back to pure LLM.")
+                    return None
+
+                return res_str, source_count
+
+            rag_out = safe_execute(_rag_query, fallback=None)
+            if rag_out is not None:
+                answer, source_count = rag_out
+                return QueryResult(
+                    answer=answer,
+                    route="rag",
+                    source_count=source_count,
+                    used_memory=used_memory,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                )
+
+        logger.warning("RAG unavailable — falling back to pure Gemini chat.")
+
+        def _llm_fallback() -> str:
+            llm = get_gemini_llm()
+            resp = llm.complete(augmented)
+            return str(resp)
+
+        fallback_answer = safe_execute(_llm_fallback, fallback=None)
+        if fallback_answer is not None:
+            return QueryResult(
+                answer=fallback_answer,
+                route="llm",
+                source_count=0,
+                used_memory=used_memory,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
             )
-            _indices[user_id] = _index
-            return _index
-        except Exception as exc:
-            logger.error("Failed to load existing index: %s", exc)
-            return None
 
-    try:
-        reader = SimpleDirectoryReader(user_dir)
-        docs = reader.load_data()
-
-        # Attach user metadata for graph isolation
-        for doc in docs:
-            doc.metadata["user_id"] = user_id
-
-        logger.info(
-            "Loaded %d document chunks for user %s from %s",
-            len(docs),
-            user_id,
-            user_dir,
+        return QueryResult(
+            answer=_APOLOGY,
+            route="apology",
+            source_count=0,
+            used_memory=used_memory,
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
         )
-
-        _index = PropertyGraphIndex.from_documents(
-            docs,
-            property_graph_store=graph_store,
-            show_progress=True,
-        )
-        logger.info("PropertyGraphIndex built successfully for user %s.", user_id)
-        _indices[user_id] = _index
-        return _index
-    except Exception as exc:
-        logger.error("Index build failed: %s", exc, exc_info=True)
-        return None
-
-
-def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
-    """Return the cached index for the user, building it on first call.
-
-    Returns:
-        The ``PropertyGraphIndex``, or ``None`` when unavailable.
-    """
-    if user_id in _indices and _indices[user_id] is not None:
-        return _indices[user_id]
-    with _indices_lock:
-        if user_id in _indices and _indices[user_id] is not None:
-            return _indices[user_id]
-        _indices[user_id] = build_index(user_id)
-        return _indices[user_id]
-
-
-# ---------------------------------------------------------------------------
-# Query interface
-# ---------------------------------------------------------------------------
 
 
 def query(
@@ -134,80 +137,21 @@ def query(
     user_id: str = "default",
     memory_context: str = "",
 ) -> str:
-    """Answer a user question via RAG, with graceful fallback.
-
-    Flow:
-        1. Try the PropertyGraphIndex query engine (RAG + knowledge graph) filtered by user_id.
-        2. If that fails, fall back to direct Gemini LLM chat.
-        3. If *that* also fails, return an apologetic string.
+    """Backwards-compatible string answer wrapper around ``query_detailed``.
 
     Args:
-        question: The user's natural-language question.
-        user_id: The active user profile name.
-        memory_context: Pre-formatted user memories to inject into the prompt.
+        question: User natural-language question.
+        user_id: Profile identifier.
+        memory_context: Pre-formatted memory bullets.
 
     Returns:
-        The agent's answer as a string.
+        Answer text only.
     """
-    # Build an augmented prompt when memory context is available
-    if memory_context:
-        augmented = (
-            f"You are I.N.A.Y.A.T., an intelligent AI assistant.\n"
-            f"Here is what you remember about this user:\n{memory_context}\n\n"
-            f"User question: {question}"
-        )
-    else:
-        augmented = question
-
-    # ---- Attempt 1: RAG via PropertyGraphIndex ----
-    index = get_index(user_id)
-    if index is not None:
-
-        def _rag_query() -> Optional[str]:
-            from llama_index.core.vector_stores import MetadataFilters, MetadataFilter
-
-            # Restrict vector retrieval to documents belonging to this user
-            filters = MetadataFilters(
-                filters=[MetadataFilter(key="user_id", value=user_id)]
-            )
-
-            engine = index.as_query_engine(
-                include_text=True,
-                similarity_top_k=5,
-                filters=filters,
-            )
-            response = engine.query(augmented)
-            res_str = str(response)
-            disclaimers = [
-                "does not contain",
-                "no information",
-                "don't have",
-                "not mentioned",
-                "not clear",
-                "does not mention",
-                "cannot find",
-            ]
-            if not getattr(response, "source_nodes", None) or any(
-                d in res_str.lower() for d in disclaimers
-            ):
-                logger.info("RAG context insufficient — falling back to pure LLM.")
-                return None
-            return res_str
-
-        rag_answer = safe_execute(_rag_query, fallback=None)
-        if rag_answer is not None:
-            return rag_answer
-
-    logger.warning("RAG unavailable — falling back to pure Gemini chat.")
-
-    # ---- Attempt 2: Direct Gemini LLM ----
-    def _llm_fallback() -> str:
-        llm = get_gemini_llm()
-        resp = llm.complete(augmented)
-        return str(resp)
-
-    fallback_answer = safe_execute(
-        _llm_fallback,
-        fallback="I'm sorry, I'm having trouble connecting to my services right now. Please try again in a moment.",
+    result = query_detailed(
+        QueryInput.from_raw(question, user_id=user_id, memory_context=memory_context)
     )
-    return fallback_answer
+    return result.answer
+
+
+# Backwards-compatible re-exports (prefer ``core.ingest`` for new code).
+from core.ingest import build_index, get_index  # noqa: E402,F401

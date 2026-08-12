@@ -6,11 +6,10 @@ Validates:
   3. Health monitor instantiates.
   4. (When secrets are present) services are reachable.
 
-Usage (local):
-    python -m pytest tests/smoke_test.py -v
-
-Usage (CI):
+Usage (local and CI):
     python tests/smoke_test.py          # exits 0 on pass, 1 on fail
+
+Do not use pytest for CI; unittest via __main__ is the supported runner.
 """
 
 import os
@@ -52,6 +51,94 @@ class TestImports(unittest.TestCase):
 
     def test_import_startup(self) -> None:
         import core.startup  # noqa: F401
+
+    def test_import_settings(self) -> None:
+        import core.settings  # noqa: F401
+
+    def test_import_identity(self) -> None:
+        import core.identity  # noqa: F401
+
+    def test_import_observability(self) -> None:
+        import core.observability  # noqa: F401
+
+    def test_import_schemas(self) -> None:
+        import core.schemas  # noqa: F401
+
+    def test_import_conversation(self) -> None:
+        import core.conversation  # noqa: F401
+
+    def test_import_ingest(self) -> None:
+        import core.ingest  # noqa: F401
+
+    def test_import_compat(self) -> None:
+        import core.compat  # noqa: F401
+
+
+class TestBackwardsCompatibility(unittest.TestCase):
+    """HOW_TO_FIX §0.3 — legacy contracts must keep working."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    def test_query_legacy_signature_returns_str(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        with patch("core.agent.configure_llama_settings"), patch(
+            "core.agent.get_index", return_value=None
+        ), patch("core.agent.get_gemini_llm") as mock_llm:
+            mock_llm.return_value.complete.return_value = "legacy ok"
+            from core.agent import query
+
+            answer = query("Hello?", user_id="default", memory_context="")
+            self.assertIsInstance(answer, str)
+            self.assertEqual(answer, "legacy ok")
+
+    def test_mem0_user_id_not_renamed(self) -> None:
+        from core.compat import mem0_user_id
+
+        self.assertEqual(mem0_user_id("Rahul"), "Rahul")
+        self.assertEqual(mem0_user_id("  Moham  "), "Moham")
+
+    def test_breaker_forced_open_requires_demo_mode(self) -> None:
+        from core.resilience import CircuitBreaker, DemoModeRequired, set_breaker_forced_open
+        from core.settings import clear_settings_cache, get_settings
+
+        os.environ["INAYAT_DEMO_MODE"] = "false"
+        clear_settings_cache()
+        self.assertFalse(get_settings().demo_mode)
+
+        cb = CircuitBreaker()
+        with self.assertRaises(DemoModeRequired):
+            set_breaker_forced_open(cb, True, service="Mem0")
+
+        os.environ["INAYAT_DEMO_MODE"] = "true"
+        clear_settings_cache()
+        set_breaker_forced_open(cb, True, service="Mem0")
+        self.assertTrue(cb.forced_open)
+        set_breaker_forced_open(cb, False, service="Mem0")
+        self.assertFalse(cb.forced_open)
+
+
+class TestIdentity(unittest.TestCase):
+    """Verify user id sanitization."""
+
+    def test_parse_valid_user_id(self) -> None:
+        from core.identity import UserId
+
+        self.assertEqual(UserId.parse("Moham").value, "Moham")
+        self.assertEqual(UserId.parse("default").value, "default")
+
+    def test_reject_path_traversal(self) -> None:
+        from core.identity import InvalidUserId, UserId
+
+        with self.assertRaises(InvalidUserId):
+            UserId.parse("../etc")
+        with self.assertRaises(InvalidUserId):
+            UserId.parse("alice/bob")
 
 
 class TestEnvironment(unittest.TestCase):
@@ -186,15 +273,72 @@ class TestLiveServices(unittest.TestCase):
         self.assertTrue(ping_neo4j())
 
 
+class TestFailureDesign(unittest.TestCase):
+    """Verify section 0.2 failure-mode behaviors."""
+
+    def test_graph_node_user_filter(self) -> None:
+        from core.graph_store import _node_allowed_for_user
+
+        self.assertTrue(
+            _node_allowed_for_user(["Chunk"], {"user_id": "alice"}, "alice")
+        )
+        self.assertFalse(
+            _node_allowed_for_user(["Chunk"], {"user_id": "bob"}, "alice")
+        )
+        self.assertTrue(_node_allowed_for_user(["Entity"], {}, "alice"))
+
+    def test_index_build_in_progress(self) -> None:
+        from core import ingest as ingest_mod
+        from core.exceptions import IndexBuildInProgress
+        from core.ingest import schedule_index_build
+
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+        with ingest_mod._jobs_lock:
+            ingest_mod._index_jobs["default"] = ingest_mod._IndexJob(
+                status="building", job_id="existing-job", updated_at=0.0
+            )
+
+        with self.assertRaises(IndexBuildInProgress) as ctx:
+            schedule_index_build("default")
+        self.assertEqual(ctx.exception.job_id, "existing-job")
+
+        with ingest_mod._jobs_lock:
+            ingest_mod._index_jobs.pop("default", None)
+
+    def test_upload_size_limit_message(self) -> None:
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache, get_settings
+
+        clear_settings_cache()
+        from core.ingest import save_uploads
+
+        huge = b"x" * (get_settings().max_upload_bytes + 1)
+        with self.assertRaises(ValueError) as ctx:
+            save_uploads("default", [("big.pdf", huge)])
+        self.assertIn("exceeds maximum upload size", str(ctx.exception))
+
+
 from unittest.mock import patch, MagicMock
 
 
 class TestAgentPipeline(unittest.TestCase):
     """Verify agent query pipeline with mocked services."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    @patch("core.agent.configure_llama_settings")
     @patch("core.agent.get_index")
     @patch("core.agent.get_gemini_llm")
-    def test_query_rag_success(self, mock_get_llm, mock_get_index) -> None:
+    def test_query_rag_success(self, mock_get_llm, mock_get_index, _mock_configure) -> None:
         # Mock index query engine
         mock_index = MagicMock()
         mock_engine = MagicMock()
@@ -214,9 +358,12 @@ class TestAgentPipeline(unittest.TestCase):
         self.assertEqual(ans, "Mocked RAG response about AI.")
         mock_engine.query.assert_called_once()
 
+    @patch("core.agent.configure_llama_settings")
     @patch("core.agent.get_index")
     @patch("core.agent.get_gemini_llm")
-    def test_query_rag_fails_llm_fallback(self, mock_get_llm, mock_get_index) -> None:
+    def test_query_rag_fails_llm_fallback(
+        self, mock_get_llm, mock_get_index, _mock_configure
+    ) -> None:
         # RAG fails (returns None)
         mock_get_index.return_value = None
 
@@ -236,10 +383,13 @@ if __name__ == "__main__":
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestImports))
+    suite.addTests(loader.loadTestsFromTestCase(TestIdentity))
     suite.addTests(loader.loadTestsFromTestCase(TestEnvironment))
     suite.addTests(loader.loadTestsFromTestCase(TestHealthMonitor))
     suite.addTests(loader.loadTestsFromTestCase(TestResilience))
     suite.addTests(loader.loadTestsFromTestCase(TestLiveServices))
+    suite.addTests(loader.loadTestsFromTestCase(TestBackwardsCompatibility))
+    suite.addTests(loader.loadTestsFromTestCase(TestFailureDesign))
     suite.addTests(loader.loadTestsFromTestCase(TestAgentPipeline))
 
     runner = unittest.TextTestRunner(verbosity=2)

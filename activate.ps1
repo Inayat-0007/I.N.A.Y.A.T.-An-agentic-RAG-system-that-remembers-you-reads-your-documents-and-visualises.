@@ -33,4 +33,8 @@ Write-Host "[5/6] Running service warmup..." -ForegroundColor Cyan
 & .venv\Scripts\python warmup.py
 
 Write-Host "[6/6] Launching Streamlit..." -ForegroundColor Cyan
+if (-not $env:INAYAT_DEMO_MODE) {
+    $env:INAYAT_DEMO_MODE = "true"
+    Write-Host "INAYAT_DEMO_MODE enabled for presentation circuit-breaker demos." -ForegroundColor Yellow
+}
 & .venv\Scripts\streamlit run app.py
