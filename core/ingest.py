@@ -126,6 +126,18 @@ def save_uploads(
             else:
                 payload = content.read()
 
+            if safe_name.lower().endswith(".pdf") and not payload.startswith(b"%PDF"):
+                raise ValueError(
+                    f"File '{safe_name}' is not a valid PDF (missing %PDF header)."
+                )
+            if safe_name.lower().endswith(".txt"):
+                try:
+                    payload.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise ValueError(
+                        f"File '{safe_name}' is not valid UTF-8 text."
+                    ) from exc
+
             if len(payload) > settings.max_upload_bytes:
                 raise ValueError(
                     f"File '{safe_name}' exceeds maximum upload size "
@@ -280,6 +292,14 @@ def get_index(user_id: str = "default") -> Optional[PropertyGraphIndex]:
     cached = _indices.get(uid)
     if cached is not None:
         return cached
+
+    if not _has_documents(uid) and not get_settings().allow_empty_from_existing:
+        logger.info(
+            "No documents for %s and INAYAT_ALLOW_EMPTY_FROM_EXISTING=false — "
+            "skipping from_existing (LLM fallback will be explicit).",
+            uid,
+        )
+        return None
 
     with _indices_lock:
         cached = _indices.get(uid)

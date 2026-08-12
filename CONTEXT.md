@@ -18,15 +18,15 @@
 
 ## Technology stack
 
-| Layer      | Tool                                      | Notes                             |
-| ---------- | ----------------------------------------- | --------------------------------- |
-| LLM        | `gemini-flash-lite-latest`                | via `core/llm_setup.py`           |
-| Embeddings | `gemini-embedding-001`                    | 3072-dim                          |
-| Memory     | Mem0 (`mem0ai==2.0.4`)                    | `core/memory.py`                  |
-| Graph      | Neo4j Aura (`neo4j==5.28.4`)              | `core/graph_store.py`             |
-| RAG        | LlamaIndex PropertyGraphIndex (`0.14.22`) | `core/ingest.py`, `core/agent.py` |
-| UI         | Streamlit `1.58.0` + React SPA            | `app.py`, `api.py`, `frontend/`   |
-| Config     | pydantic-settings                         | `core/settings.py`                |
+| Layer      | Tool                                      | Notes                                                          |
+| ---------- | ----------------------------------------- | -------------------------------------------------------------- |
+| LLM        | `gemini-flash-lite-latest`                | via `core/llm_setup.py`                                        |
+| Embeddings | `gemini-embedding-001`                    | 3072-dim                                                       |
+| Memory     | Mem0 (`mem0ai==2.0.4`)                    | `core/memory.py`                                               |
+| Graph      | Neo4j Aura (`neo4j==5.28.4`)              | `core/graph_store.py`                                          |
+| RAG        | LlamaIndex PropertyGraphIndex (`0.14.22`) | `core/ingest.py`, `core/agent.py`                              |
+| UI         | Streamlit `1.58.0` + React SPA            | `app.py`, `api.py`, `frontend/`                                |
+| Config     | pydantic-settings                         | `core/settings.py`                                             |
 | CI         | GitHub Actions                            | flake8 + black + gitleaks + pip-audit + smoke + frontend build |
 
 ---
@@ -69,7 +69,7 @@
 
 | File                            | Count | CI             |
 | ------------------------------- | ----- | -------------- |
-| `tests/smoke_test.py`           | 39    | Yes            |
+| `tests/smoke_test.py`           | 44    | Yes            |
 | `tests/backend_feature_test.py` | 10    | No (live keys) |
 
 Run smoke: `python tests/smoke_test.py`
@@ -84,7 +84,7 @@ On push/PR to `main` or `master` ([ci.yml](.github/workflows/ci.yml)):
 2. black --check
 3. gitleaks
 4. pip-audit (`pip install pip-audit` then `pip-audit -r requirements.txt`)
-5. `python tests/smoke_test.py` (39 tests)
+5. `python tests/smoke_test.py` (44 tests)
 
 Parallel job **frontend-build**: `npm ci` + `npm run build` in `frontend/`.
 

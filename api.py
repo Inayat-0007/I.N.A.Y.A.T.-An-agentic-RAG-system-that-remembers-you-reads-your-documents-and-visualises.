@@ -30,7 +30,7 @@ from core.ingest import (
     save_uploads,
     schedule_index_build,
 )
-from core.memory import add_memory, clear_memories, get_memories
+from core.memory import add_memory, build_memory_context, clear_memories, get_memories
 from core.observability import set_request_id
 from core.schemas import QueryInput, QueryResult
 from core.settings import get_settings
@@ -184,9 +184,8 @@ def api_query_agent(req: QueryRequest = Body(...)):
     user = _parse_user_id(req.user_id)
     set_request_id(f"api-query-{user.value}")
 
-    add_memory(user.value, req.question)
-    mem_lines = get_memories(user.value)
-    memory_ctx = "\n".join(f"• {m}" for m in mem_lines) if mem_lines else ""
+    add_memory(user.value, req.question, kind="utterance")
+    memory_ctx, mem_lines = build_memory_context(user.value, req.question)
 
     result = query_detailed(
         QueryInput(
@@ -234,6 +233,15 @@ async def api_upload_files(user_id: str = Form(...), files: List[UploadFile] = F
     if not saved:
         raise HTTPException(status_code=400, detail="No valid PDF or TXT files were uploaded.")
 
+    settings = get_settings()
+    if settings.sync_ingest:
+        build_index(user.value)
+        return {
+            "status": "success",
+            "indexed_files": saved,
+            "index_status": get_index_status(user.value),
+        }
+
     try:
         job_id = schedule_index_build(user.value)
     except IndexBuildInProgress as exc:
@@ -252,6 +260,7 @@ async def api_upload_files(user_id: str = Form(...), files: List[UploadFile] = F
         content={
             "status": "accepted",
             "job_id": job_id,
+            "files": saved,
             "indexed_files": saved,
             "index_status": get_index_status(user.value),
         },

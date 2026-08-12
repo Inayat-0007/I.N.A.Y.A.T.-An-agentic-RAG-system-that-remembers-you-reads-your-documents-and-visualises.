@@ -170,6 +170,8 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(settings.mmr_lambda, 0.7)
         self.assertEqual(settings.chunk_size, 512)
         self.assertEqual(settings.chunk_overlap, 64)
+        self.assertFalse(settings.allow_empty_from_existing)
+        self.assertTrue(settings.sync_ingest)
 
     def test_chunk_overlap_must_be_less_than_chunk_size(self) -> None:
         from pydantic import ValidationError
@@ -371,7 +373,7 @@ class TestFailureDesign(unittest.TestCase):
         clear_settings_cache()
         from core.ingest import save_uploads
 
-        huge = b"x" * (get_settings().max_upload_bytes + 1)
+        huge = b"%PDF-1.4\n" + (b"x" * (get_settings().max_upload_bytes + 1))
         with self.assertRaises(ValueError) as ctx:
             save_uploads("default", [("big.pdf", huge)])
         self.assertIn("exceeds maximum upload size", str(ctx.exception))
@@ -433,6 +435,93 @@ class TestAgentPipeline(unittest.TestCase):
         self.assertEqual(ans, "Mocked LLM fallback response.")
         mock_llm.complete.assert_called_once()
 
+    @patch("core.agent.configure_llama_settings")
+    @patch("core.agent.get_index")
+    @patch("core.agent.get_gemini_llm")
+    def test_query_rag_keeps_answer_when_sources_hedge(
+        self, mock_get_llm, mock_get_index, _mock_configure
+    ) -> None:
+        mock_index = MagicMock()
+        mock_engine = MagicMock()
+        mock_response = MagicMock()
+        mock_response.source_nodes = [MagicMock()]
+        mock_response.__str__.return_value = (
+            "The document does not contain a salary figure, but the CEO is named."
+        )
+        mock_engine.query.return_value = mock_response
+        mock_index.as_query_engine.return_value = mock_engine
+        mock_get_index.return_value = mock_index
+
+        from core.agent import query_detailed
+        from core.schemas import QueryInput
+
+        result = query_detailed(QueryInput.from_raw("Who is the CEO?"))
+        self.assertEqual(result.route, "rag")
+        self.assertGreater(result.source_count, 0)
+        mock_get_llm.assert_not_called()
+
+
+class TestMemoryContext(unittest.TestCase):
+    """HOW_TO_FIX §4.1 — search + get_all merge with cap."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    @patch("core.memory.get_memories")
+    @patch("core.memory.search_memories")
+    def test_build_memory_context_merges_and_caps(
+        self, mock_search, mock_get
+    ) -> None:
+        mock_search.return_value = ["User likes tea"]
+        mock_get.return_value = ["User likes tea", "User is in Pune"]
+        from core.memory import build_memory_context
+
+        ctx, lines = build_memory_context("demo_user", "What do I like?")
+        self.assertIn("tea", ctx)
+        self.assertIn("Pune", ctx)
+        self.assertEqual(len(lines), 2)
+
+    @patch("core.memory.get_memories")
+    @patch("core.memory.search_memories")
+    def test_build_memory_context_search_failure_falls_back(
+        self, mock_search, mock_get
+    ) -> None:
+        mock_search.side_effect = RuntimeError("mem0 down")
+        mock_get.return_value = ["fallback fact"]
+        from core.memory import build_memory_context
+
+        ctx, lines = build_memory_context("demo_user", "hello")
+        self.assertIn("fallback fact", ctx)
+        self.assertEqual(lines, ["fallback fact"])
+
+
+class TestIngestIsolation(unittest.TestCase):
+    """HOW_TO_FIX §4.4 — empty folder does not attach shared graph."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ.setdefault("GEMINI_API_KEY", "test-smoke-key")
+        from core.settings import clear_settings_cache
+
+        clear_settings_cache()
+
+    def test_get_index_skips_from_existing_when_empty(self) -> None:
+        from core.ingest import get_index
+
+        index = get_index("empty_user_no_docs")
+        self.assertIsNone(index)
+
+    def test_save_uploads_rejects_fake_pdf(self) -> None:
+        from core.ingest import save_uploads
+
+        with self.assertRaises(ValueError) as ctx:
+            save_uploads("default", [("not.pdf", b"this is not a pdf")])
+        self.assertIn("valid PDF", str(ctx.exception))
+
 
 if __name__ == "__main__":
     loader = unittest.TestLoader()
@@ -448,6 +537,8 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestBackwardsCompatibility))
     suite.addTests(loader.loadTestsFromTestCase(TestFailureDesign))
     suite.addTests(loader.loadTestsFromTestCase(TestAgentPipeline))
+    suite.addTests(loader.loadTestsFromTestCase(TestMemoryContext))
+    suite.addTests(loader.loadTestsFromTestCase(TestIngestIsolation))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

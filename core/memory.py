@@ -7,7 +7,7 @@ never crashes the app — the agent simply answers without personalisation.
 
 import logging
 import threading
-from typing import List, Optional
+from typing import List, Literal, Optional, Tuple
 
 from mem0 import MemoryClient
 
@@ -66,17 +66,21 @@ def _mem0_user_id(user_id: str) -> str:
     return UserId.parse(user_id).value
 
 
-def add_memory(user_id: str, text: str) -> bool:
+def add_memory(
+    user_id: str, text: str, *, kind: Literal["utterance", "fact"] = "utterance"
+) -> bool:
     """Store a user fact / interaction in Mem0.
 
     Args:
         user_id: Unique user identifier (e.g. their display name).
         text: The raw text to memorise.
+        kind: ``utterance`` (default, full user message) or ``fact`` (compact).
 
     Returns:
         ``True`` on success, ``False`` on any failure.
     """
     user_id = _mem0_user_id(user_id)
+    logger.debug("Mem0 add_memory kind=%s user=%s", kind, user_id)
     if not _cb.allow_request():
         logger.debug("Mem0 circuit breaker OPEN — skipping add.")
         return False
@@ -188,6 +192,44 @@ def clear_memories(user_id: str) -> bool:
         return True
 
     return safe_execute(_clear, fallback=False)
+
+
+def build_memory_context(
+    user_id: str, question: str, *, search_limit: int = 5
+) -> Tuple[str, List[str]]:
+    """Merge Mem0 search hits with get_all, capped by settings.
+
+    Search is on the hot path. If search fails, fall back to ``get_memories`` only.
+    """
+    uid = _mem0_user_id(user_id)
+    cap = get_settings().memory_context_max_chars
+
+    searched = safe_execute(
+        lambda: search_memories(uid, question, limit=search_limit),
+        fallback=None,
+    )
+    listed = get_memories(uid)
+
+    merged: List[str] = []
+    seen = set()
+    for line in (searched or []) + listed:
+        key = line.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(line.strip())
+
+    formatted: List[str] = []
+    used = 0
+    for line in merged:
+        bullet = f"• {line}"
+        extra = len(bullet) + (1 if formatted else 0)
+        if used + extra > cap:
+            break
+        formatted.append(bullet)
+        used += extra
+
+    return "\n".join(formatted), merged
 
 
 def ping_mem0() -> bool:

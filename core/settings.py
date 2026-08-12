@@ -53,7 +53,11 @@ class InayatSettings(BaseSettings):
     )
     log_level: str = Field(default="INFO", validation_alias="INAYAT_LOG_LEVEL")
     allow_empty_from_existing: bool = Field(
-        default=True, validation_alias="INAYAT_ALLOW_EMPTY_FROM_EXISTING"
+        default=False, validation_alias="INAYAT_ALLOW_EMPTY_FROM_EXISTING"
+    )
+    sync_ingest: bool = Field(default=True, validation_alias="INAYAT_SYNC_INGEST")
+    memory_context_max_chars: int = Field(
+        default=2000, validation_alias="INAYAT_MEMORY_CONTEXT_MAX_CHARS", ge=200
     )
 
     @field_validator("gemini_api_key")

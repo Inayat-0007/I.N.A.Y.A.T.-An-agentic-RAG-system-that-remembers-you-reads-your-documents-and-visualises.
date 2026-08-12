@@ -1163,13 +1163,12 @@ def main() -> None:
         user_prompt = st.session_state.messages[-1]["content"]
 
         # Save memory
-        from core.memory import add_memory
+        from core.memory import add_memory, build_memory_context
 
-        add_memory(st.session_state.user_id, user_prompt)
-
-        # Get memory context
-        mem_lines = _fetch_memories(st.session_state.user_id)
-        memory_ctx = "\n".join(f"• {m}" for m in mem_lines) if mem_lines else ""
+        add_memory(st.session_state.user_id, user_prompt, kind="utterance")
+        memory_ctx, _mem_lines = build_memory_context(
+            st.session_state.user_id, user_prompt
+        )
 
         # Render a temporary placeholder thinking text in the left column
         with col_left:

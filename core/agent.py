@@ -115,10 +115,11 @@ def query_detailed(inp: QueryInput) -> QueryResult:
                 source_nodes = getattr(response, "source_nodes", None) or []
                 source_count = len(source_nodes)
 
-                if not source_nodes or any(
-                    phrase in res_str.lower() for phrase in _DISCLAIMERS
-                ):
+                if not source_nodes:
                     logger.info("RAG context insufficient — falling back to pure LLM.")
+                    return None
+                if any(phrase in res_str.lower() for phrase in _DISCLAIMERS) and source_count == 0:
+                    logger.info("RAG disclaimer with zero sources — falling back to pure LLM.")
                     return None
 
                 return res_str, source_count
