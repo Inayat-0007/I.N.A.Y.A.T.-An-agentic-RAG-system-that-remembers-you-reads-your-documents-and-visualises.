@@ -145,3 +145,5 @@ Thumbs.db
 inayat_debug.log
 data/documents/*
 !data/documents/.gitkeep
+!data/documents/_samples/
+!data/documents/_samples/**

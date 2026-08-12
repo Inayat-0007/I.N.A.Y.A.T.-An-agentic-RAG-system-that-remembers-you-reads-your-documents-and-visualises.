@@ -11,15 +11,21 @@ Validates the full capability of:
 """
 
 import os
+import shutil
 import sys
 import unittest
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.startup import load_env, validate_env, run_startup
 
 load_env()
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SAMPLES_DIR = _PROJECT_ROOT / "data" / "documents" / "_samples"
+_RAG_USER_ID = "integration_rag"
 
 
 class TestBackendStartup(unittest.TestCase):
@@ -156,16 +162,40 @@ class TestBackendGraphStore(unittest.TestCase):
 class TestBackendAgentRAG(unittest.TestCase):
     """Verify index creation and RAG querying capabilities."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not _SAMPLES_DIR.is_dir():
+            raise unittest.SkipTest("Sample docs missing: data/documents/_samples/")
+
+        user_dir = _PROJECT_ROOT / "data" / "documents" / _RAG_USER_ID
+        user_dir.mkdir(parents=True, exist_ok=True)
+        for pattern in ("*.pdf", "*.txt"):
+            for src in _SAMPLES_DIR.glob(pattern):
+                shutil.copy2(src, user_dir / src.name)
+
+        from core.ingest import build_index
+
+        index = build_index(_RAG_USER_ID)
+        if index is None:
+            raise unittest.SkipTest(
+                "Could not build index from sample docs (check GEMINI/Neo4j keys)."
+            )
+
     def test_agent_query_rag(self):
         from core.agent import query
 
-        # Querying information present in the indexed scenario PDF
-        ans = query("Who is the CEO of INAYAT AI Solutions?")
+        ans = query(
+            "Who is the CEO of INAYAT AI Solutions?", user_id=_RAG_USER_ID
+        )
         self.assertIsInstance(ans, str)
         self.assertGreater(len(ans), 0)
+        self.assertIn(
+            "inayat hussain",
+            ans.lower(),
+            msg=f"Expected CEO from sample PDF; got: {ans!r}",
+        )
 
-        # Verify the fallback system responds cleanly to generic questions
-        fallback_ans = query("What is 5 + 5?")
+        fallback_ans = query("What is 5 + 5?", user_id=_RAG_USER_ID)
         self.assertIn("10", fallback_ans)
 
 

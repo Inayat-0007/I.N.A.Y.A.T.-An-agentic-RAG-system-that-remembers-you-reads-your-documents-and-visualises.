@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
   <img src="https://img.shields.io/badge/Tests-36%20smoke%20%2F%2010%20live-success" alt="Tests">
-  <img src="https://img.shields.io/badge/CI-smoke%20only-informational" alt="CI Scope">
+  <img src="https://img.shields.io/badge/CI-smoke%20%2B%20frontend-informational" alt="CI Scope">
   <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
   <br>
@@ -21,23 +21,23 @@
 
 ## Canonical status (source of truth)
 
-| Fact | Value |
-|------|-------|
-| **Maturity** | Advanced MVP / demo-ready; not hardened production |
-| **Agent model** | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent) |
-| **Python** | 3.12 |
-| **LLM** | `gemini-flash-lite-latest` |
-| **Embeddings** | `gemini-embedding-001` (3072-dim) |
-| **Chunking** | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`) |
-| **Retrieval** | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter |
-| **Tests** | 36 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
-| **CI** | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only |
-| **Docker** | `python:3.12-slim`, Streamlit `:8501`; compose is **one** service |
-| **Seed docs** | None in git — only `data/documents/.gitkeep` |
-| **UIs** | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`) |
-| **Isolation** | Soft: folder + metadata + Mem0 `user_id`; shared Neo4j DB; no auth |
-| **Critical env** | `GEMINI_API_KEY` |
-| **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
+| Fact                | Value                                                                        |
+| ------------------- | ---------------------------------------------------------------------------- |
+| **Maturity**        | Advanced MVP / demo-ready; not hardened production                           |
+| **Agent model**     | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent)                 |
+| **Python**          | 3.12                                                                         |
+| **LLM**             | `gemini-flash-lite-latest`                                                   |
+| **Embeddings**      | `gemini-embedding-001` (3072-dim)                                            |
+| **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)      |
+| **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
+| **Tests**           | 36 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
+| **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                 |
+| **Docker**          | `python:3.12-slim`, Streamlit `:8501`; compose is **one** service            |
+| **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`    |
+| **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)               |
+| **Isolation**       | Soft: folder + metadata + Mem0 `user_id`; shared Neo4j DB; no auth           |
+| **Critical env**    | `GEMINI_API_KEY`                                                             |
+| **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`              |
 
 See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
@@ -62,7 +62,7 @@ See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
 **I.N.A.Y.A.T.** combines Google Gemini, Mem0 long-term memory, and LlamaIndex `PropertyGraphIndex` over Neo4j AuraDB. It is a **single-agent** RAG system with graceful degradation (RAG → LLM → apology) and per-user document folders.
 
-Upload PDFs or TXT files per profile — the repository does **not** ship scenario PDFs; only `data/documents/.gitkeep` is committed.
+Upload PDFs or TXT files per profile. Sample documents ship under `data/documents/_samples/` — copy them into `data/documents/{your_name}/` then rebuild the index (see `_samples/README.md`).
 
 ---
 
@@ -84,17 +84,17 @@ flowchart TD
 
 Pinned versions are in [constraints.txt](constraints.txt).
 
-| Component | Technology | Pinned version | Purpose |
-| :--- | :--- | :--- | :--- |
-| **UI (legacy)** | Streamlit | `1.58.0` | Demo dashboard (`app.py`) |
-| **UI (modern)** | React + Vite + FastAPI | see `frontend/` | SPA + REST API |
-| **Graph store** | Neo4j AuraDB | driver `5.28.4` | Property graph storage |
-| **Memory** | Mem0 | `mem0ai==2.0.4` | Persistent user memory |
-| **LLM** | Gemini Flash Lite | `gemini-flash-lite-latest` | Generation |
-| **Embeddings** | Gemini | `gemini-embedding-001` | 3072-dim vectors |
-| **RAG** | LlamaIndex | core `0.14.22` | PropertyGraphIndex |
-| **Visualization** | Vis.js | in frontend | Graph drawer |
-| **Config** | pydantic-settings | `2.12.0` | Typed env settings |
+| Component         | Technology             | Pinned version             | Purpose                   |
+| :---------------- | :--------------------- | :------------------------- | :------------------------ |
+| **UI (legacy)**   | Streamlit              | `1.58.0`                   | Demo dashboard (`app.py`) |
+| **UI (modern)**   | React + Vite + FastAPI | see `frontend/`            | SPA + REST API            |
+| **Graph store**   | Neo4j AuraDB           | driver `5.28.4`            | Property graph storage    |
+| **Memory**        | Mem0                   | `mem0ai==2.0.4`            | Persistent user memory    |
+| **LLM**           | Gemini Flash Lite      | `gemini-flash-lite-latest` | Generation                |
+| **Embeddings**    | Gemini                 | `gemini-embedding-001`     | 3072-dim vectors          |
+| **RAG**           | LlamaIndex             | core `0.14.22`             | PropertyGraphIndex        |
+| **Visualization** | Vis.js                 | in frontend                | Graph drawer              |
+| **Config**        | pydantic-settings      | `2.12.0`                   | Typed env settings        |
 
 ---
 
@@ -131,7 +131,10 @@ INAYAT/
 │   ├── compat.py                 # Backwards-compat exports
 │   └── logging_config.py
 ├── frontend/                     # React SPA (Vite)
-├── data/documents/.gitkeep       # Per-user uploads at runtime
+├── data/
+│   └── documents/
+│       ├── .gitkeep              # Per-user uploads at runtime
+│       └── _samples/             # MIT sample PDFs (copy to {your_name}/)
 ├── tests/
 │   ├── smoke_test.py             # 36 tests (CI)
 │   └── backend_feature_test.py   # 10 live integration tests
@@ -204,25 +207,28 @@ On push/PR to `main` or `master` (see [.github/workflows/ci.yml](.github/workflo
 1. **flake8** — critical errors only (`E9,F63,F7,F82`)
 2. **black** — formatting check
 3. **gitleaks** — secret scan
-4. **smoke tests** — `python tests/smoke_test.py`
+4. **pip-audit** — dependency vulnerability scan
+5. **smoke tests** — `python tests/smoke_test.py` (36 tests)
 
-Does **not** run: `backend_feature_test.py`, Safety audit, frontend build (yet).
+**frontend-build** job (parallel): `npm ci` + `npm run build` in `frontend/`.
 
-Python **3.12**, installs with `-c constraints.txt`.
+Does **not** run on every PR: `backend_feature_test.py` (live keys). See [.github/workflows/integration.yml](.github/workflows/integration.yml) — weekly schedule + manual dispatch. **Cost:** live Gemini + Mem0 + Neo4j per run.
+
+Python **3.12**, installs with `pip install -r requirements.txt -c constraints.txt`.
 
 ---
 
 ## 📄 Documentation
 
-| File | Role |
-|------|------|
-| [README.md](README.md) | This file — install, architecture, canonical facts |
-| [CONTEXT.md](CONTEXT.md) | Contributor module map |
-| [STATUS.md](STATUS.md) | One-page examiner sheet |
-| [WHAT_TO_FIX.md](WHAT_TO_FIX.md) | Issue inventory |
-| [HOW_TO_FIX.md](HOW_TO_FIX.md) | Remediation architecture |
-| [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) | Historical audit (superseded for counts) |
-| [demo_script.md](demo_script.md) | Live presentation script |
+| File                                                       | Role                                               |
+| ---------------------------------------------------------- | -------------------------------------------------- |
+| [README.md](README.md)                                     | This file — install, architecture, canonical facts |
+| [CONTEXT.md](CONTEXT.md)                                   | Contributor module map                             |
+| [STATUS.md](STATUS.md)                                     | One-page examiner sheet                            |
+| [WHAT_TO_FIX.md](WHAT_TO_FIX.md)                           | Issue inventory                                    |
+| [HOW_TO_FIX.md](HOW_TO_FIX.md)                             | Remediation architecture                           |
+| [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) | Historical audit (superseded for counts)           |
+| [demo_script.md](demo_script.md)                           | Live presentation script                           |
 
 ---
 

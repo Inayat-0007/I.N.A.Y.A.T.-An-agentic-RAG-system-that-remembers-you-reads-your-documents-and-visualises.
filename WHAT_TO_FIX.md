@@ -1,5 +1,7 @@
 # WHAT TO FIX — I.N.A.Y.A.T. Complete Issue Inventory
 
+> **Historical inventory:** Mentions of outdated values (`3.14`, `19/19`, `gemini-1.5-flash`, `PyVis`, `HealthStatus`, `17-test`, etc.) below record **issues at inspection time** and are **superseded** by [README.md](README.md) and [STATUS.md](STATUS.md). Do not treat this file as current truth.
+
 **Purpose:** Single lossless capture of Copilot’s status report and the Principal Architect deep-dive. This file is analysis only. Remediation lives in `HOW_TO_FIX.md`.
 
 **Repo:** https://github.com/Inayat-0007/I.N.A.Y.A.T.-An-agentic-RAG-system-that-remembers-you-reads-your-documents-and-visualises..git

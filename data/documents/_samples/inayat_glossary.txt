@@ -1,0 +1,1 @@
+INAYAT Glossary (sample TXT)\nRAG: Retrieval-Augmented Generation\nMem0: long-term user memory service\nNeo4j: property graph database for document entities\n

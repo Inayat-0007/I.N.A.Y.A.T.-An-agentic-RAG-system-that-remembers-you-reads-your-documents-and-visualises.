@@ -203,8 +203,8 @@ export default function LandingPage({ onEnterWorkspace }) {
           className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl w-full border-t border-cyber-border/40 pt-8"
         >
           <div className="flex flex-col items-center p-3 rounded-xl bg-white/[0.02] border border-cyber-border/20">
-            <span className="font-heading font-extrabold text-2xl text-cyber-cyan text-glow-cyan">19/19</span>
-            <span className="text-xs text-cyber-muted font-subheading mt-1">Smoke Tests OK</span>
+            <span className="font-heading font-extrabold text-2xl text-cyber-cyan text-glow-cyan">36</span>
+            <span className="text-xs text-cyber-muted font-subheading mt-1">Smoke Tests (CI)</span>
           </div>
           <div className="flex flex-col items-center p-3 rounded-xl bg-white/[0.02] border border-cyber-border/20">
             <div className="flex items-center gap-1">

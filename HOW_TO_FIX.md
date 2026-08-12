@@ -1,5 +1,7 @@
 # HOW TO FIX — I.N.A.Y.A.T. Remediation Architecture
 
+> **Remediation spec (not runtime truth):** Instructions below reference outdated values only where describing fixes. Current status: [README.md](README.md), [STATUS.md](STATUS.md).
+
 **Companion to:** `WHAT_TO_FIX.md`  
 **Constraint:** Backwards compatible. Do not rip out Streamlit, Mem0, Neo4j, or the existing `query()` contract until a migration path is live.  
 **Python target (single source of truth):** **3.12** — already used by Docker; CI and docs must follow.  
