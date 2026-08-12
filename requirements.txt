@@ -31,3 +31,5 @@ python-multipart
 # Dev / CI tools
 flake8
 black
+playwright
+requests

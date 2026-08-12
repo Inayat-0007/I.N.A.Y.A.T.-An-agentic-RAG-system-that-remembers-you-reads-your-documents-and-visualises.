@@ -77,24 +77,24 @@ The 2026-08-13 remediation (`HOW_TO_FIX.md` §1–§13) is **complete**: docs ma
 
 Shipped on branch `cursor/what-and-how-to-fix-docs` (see [STATUS.md](STATUS.md) for the step checklist):
 
-| Area | What changed |
-| ---- | ------------ |
-| **Docs** | Canonical README / STATUS / CONTEXT / LICENSE; `WHAT_TO_FIX.md` is historical inventory; examiner one-liner uses **52 smoke / 10 live** |
-| **Seed RAG** | MIT sample PDFs in `data/documents/_samples/` (CEO fact: Dr. Inayat Hussain) |
-| **Config** | `core/settings.py` (`InayatSettings`); chunk/model from env; overlap must be &lt; chunk size |
-| **Identity** | `core/identity.py` — `UserId.parse()` rejects `../` and `/` |
-| **Query contract** | `QueryResult` with `route`, `used_memory`, `source_count`; wrapper `query()` still returns `str` |
-| **Memory** | `build_memory_context()` search + get_all, 2000-char cap, fallback if Mem0 is down |
-| **RAG gate** | Disclaimer/hedge does **not** force LLM fallback when sources exist |
-| **Ingest** | PDF `%PDF` check; `INAYAT_SYNC_INGEST=true` default; `INAYAT_ALLOW_EMPTY_FROM_EXISTING=false` |
-| **Graph** | Visualization Cypher filtered to the current user; `is_mock` when no chunks |
-| **API** | FastAPI lifespan, CORS from settings, optional `INAYAT_API_KEY` + `X-INAYAT-KEY`, `X-Request-ID` |
-| **Demo safety** | Breaker `forced_open` requires `INAYAT_DEMO_MODE=true` (403 otherwise) |
-| **Docker** | Default compose = SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501` |
-| **Flags** | MMR off by default; async ingest off by default (sync wait-for-200) |
-| **Observability** | `core/observability.py` — `event=query user_id=... route=... latency_ms=... source_count=... mem0_ok=... neo4j_ok=...` |
-| **SPA** | Badges from API `route` / `used_memory` (not inferred from answer text); mock-graph banner; 403 copy for demo mode |
-| **Tests** | 52 smoke (no keys required for new identity/settings/route tests) + `tests/test_api_contract.py` + live CEO skipUnless |
+| Area               | What changed                                                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Docs**           | Canonical README / STATUS / CONTEXT / LICENSE; `WHAT_TO_FIX.md` is historical inventory; examiner one-liner uses **52 smoke / 10 live** |
+| **Seed RAG**       | MIT sample PDFs in `data/documents/_samples/` (CEO fact: Dr. Inayat Hussain)                                                            |
+| **Config**         | `core/settings.py` (`InayatSettings`); chunk/model from env; overlap must be &lt; chunk size                                            |
+| **Identity**       | `core/identity.py` — `UserId.parse()` rejects `../` and `/`                                                                             |
+| **Query contract** | `QueryResult` with `route`, `used_memory`, `source_count`; wrapper `query()` still returns `str`                                        |
+| **Memory**         | `build_memory_context()` search + get_all, 2000-char cap, fallback if Mem0 is down                                                      |
+| **RAG gate**       | Disclaimer/hedge does **not** force LLM fallback when sources exist                                                                     |
+| **Ingest**         | PDF `%PDF` check; `INAYAT_SYNC_INGEST=true` default; `INAYAT_ALLOW_EMPTY_FROM_EXISTING=false`                                           |
+| **Graph**          | Visualization Cypher filtered to the current user; `is_mock` when no chunks                                                             |
+| **API**            | FastAPI lifespan, CORS from settings, optional `INAYAT_API_KEY` + `X-INAYAT-KEY`, `X-Request-ID`                                        |
+| **Demo safety**    | Breaker `forced_open` requires `INAYAT_DEMO_MODE=true` (403 otherwise)                                                                  |
+| **Docker**         | Default compose = SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501`                                               |
+| **Flags**          | MMR off by default; async ingest off by default (sync wait-for-200)                                                                     |
+| **Observability**  | `core/observability.py` — `event=query user_id=... route=... latency_ms=... source_count=... mem0_ok=... neo4j_ok=...`                  |
+| **SPA**            | Badges from API `route` / `used_memory` (not inferred from answer text); mock-graph banner; 403 copy for demo mode                      |
+| **Tests**          | 52 smoke (no keys required for new identity/settings/route tests) + `tests/test_api_contract.py` + live CEO skipUnless                  |
 
 ---
 
@@ -250,18 +250,18 @@ API on `:8000`, Vite on `:5173`.
 
 ## 🔐 Environment
 
-| Variable | Required | Notes |
-| -------- | -------- | ----- |
-| `GEMINI_API_KEY` | **Yes** | Generation + embeddings |
-| `MEM0_API_KEY` | Recommended | Memory degrades if missing |
-| `NEO4J_URI` / `NEO4J_PASSWORD` | Recommended | Graph degrades if missing |
-| `NEO4J_USERNAME` | Default `neo4j` | |
-| `INAYAT_DEMO_MODE` | Demo toggles | `true` for breaker UI |
-| `INAYAT_API_KEY` | Optional | If set, send `X-INAYAT-KEY` |
-| `INAYAT_CORS_ORIGINS` | Optional | Explicit allow-list |
-| `INAYAT_MMR_ENABLED` | Default `false` | |
-| `INAYAT_SYNC_INGEST` | Default `true` | `false` → 202 + poll |
-| `INAYAT_ALLOW_EMPTY_FROM_EXISTING` | Default `false` | Safer empty folders |
+| Variable                           | Required        | Notes                       |
+| ---------------------------------- | --------------- | --------------------------- |
+| `GEMINI_API_KEY`                   | **Yes**         | Generation + embeddings     |
+| `MEM0_API_KEY`                     | Recommended     | Memory degrades if missing  |
+| `NEO4J_URI` / `NEO4J_PASSWORD`     | Recommended     | Graph degrades if missing   |
+| `NEO4J_USERNAME`                   | Default `neo4j` |                             |
+| `INAYAT_DEMO_MODE`                 | Demo toggles    | `true` for breaker UI       |
+| `INAYAT_API_KEY`                   | Optional        | If set, send `X-INAYAT-KEY` |
+| `INAYAT_CORS_ORIGINS`              | Optional        | Explicit allow-list         |
+| `INAYAT_MMR_ENABLED`               | Default `false` |                             |
+| `INAYAT_SYNC_INGEST`               | Default `true`  | `false` → 202 + poll        |
+| `INAYAT_ALLOW_EMPTY_FROM_EXISTING` | Default `false` | Safer empty folders         |
 
 See `.env.example` for chunk size, top_k, log level, and memory context cap.
 

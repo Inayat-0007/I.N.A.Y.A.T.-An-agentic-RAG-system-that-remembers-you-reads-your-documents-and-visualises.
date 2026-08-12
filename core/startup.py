@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from core.health import HealthMonitor
 from core.logging_config import setup_logging
+from core.resilience import clear_stale_forced_breakers
 from core.settings import clear_settings_cache, get_settings
 
 logger = logging.getLogger("inayat")
@@ -84,6 +85,8 @@ def run_startup() -> Tuple[bool, Dict[str, str], List[str]]:
 
     if missing_rec:
         warnings.append(f"Missing recommended vars: {', '.join(missing_rec)}")
+
+    clear_stale_forced_breakers()
 
     monitor = HealthMonitor()
     statuses = monitor.run_all()

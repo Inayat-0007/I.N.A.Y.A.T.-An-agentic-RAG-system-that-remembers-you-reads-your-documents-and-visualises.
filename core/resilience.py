@@ -208,6 +208,36 @@ class DemoModeRequired(PermissionError):
     """Raised when forced_open is requested without INAYAT_DEMO_MODE=true."""
 
 
+def clear_stale_forced_breakers() -> None:
+    """Clear ``forced_open`` on module breakers when demo mode is off.
+
+    Prevents a prior demo session from leaving Mem0/Neo4j forced open after
+    ``INAYAT_DEMO_MODE`` is disabled or on a fresh process start without demo.
+    """
+    try:
+        from core.settings import get_settings
+
+        if get_settings().demo_mode:
+            return
+    except Exception:
+        return
+
+    for mod_name in ("core.memory", "core.graph_store"):
+        try:
+            import importlib
+
+            mod = importlib.import_module(mod_name)
+            cb = getattr(mod, "_cb", None)
+            if cb is not None and getattr(cb, "forced_open", False):
+                cb.forced_open = False
+                logger.info(
+                    "breaker_state=CLOSED service=%s reason=demo_mode_off",
+                    getattr(cb, "service", mod_name),
+                )
+        except Exception:
+            pass
+
+
 def set_breaker_forced_open(
     breaker: CircuitBreaker, forced: bool, *, service: str = ""
 ) -> None:

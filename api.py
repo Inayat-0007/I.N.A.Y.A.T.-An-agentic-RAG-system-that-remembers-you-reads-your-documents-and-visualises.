@@ -292,7 +292,7 @@ async def api_upload_files(user_id: str = Form(...), files: List[UploadFile] = F
 
     settings = get_settings()
     if settings.sync_ingest:
-        build_index(user.value)
+        build_index(user.value, only_files=saved)
         return {
             "status": "success",
             "indexed_files": saved,
@@ -300,7 +300,7 @@ async def api_upload_files(user_id: str = Form(...), files: List[UploadFile] = F
         }
 
     try:
-        job_id = schedule_index_build(user.value)
+        job_id = schedule_index_build(user.value, only_files=saved)
     except IndexBuildInProgress as exc:
         raise HTTPException(
             status_code=409,
@@ -345,7 +345,7 @@ async def api_upload_files_sync(
     if not saved:
         raise HTTPException(status_code=400, detail="No valid PDF or TXT files were uploaded.")
 
-    build_index(user.value)
+    build_index(user.value, only_files=saved)
     return {"status": "success", "indexed_files": saved, "index_status": get_index_status(user.value)}
 
 

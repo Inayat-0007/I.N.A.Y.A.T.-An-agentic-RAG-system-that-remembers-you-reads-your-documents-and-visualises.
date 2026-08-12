@@ -10,8 +10,12 @@ Launch:
 
 import time
 import logging
+import uuid
 import streamlit as st
 from typing import Dict, List
+
+# Unique per Streamlit worker process — used to drop stale breaker widget state.
+_APP_BOOT_TOKEN = uuid.uuid4().hex
 
 # ── Bootstrap (must happen before any other core import) ──────────────
 from core.startup import enforce_critical_env_or_exit, run_startup
@@ -58,53 +62,472 @@ html, body, [class*="css"] {
     background: rgba(167, 139, 250, 0.5);
 }
 
-/* ── Header ─────────────────────────────────── */
-.hero-title {
-    background: linear-gradient(135deg, #c084fc 0%, #818cf8 35%, #6366f1 70%, #4f46e5 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-size: 2.8rem; font-weight: 800;
+/* ── Hero Section ───────────────────────────── */
+.hero-section {
+    position: relative;
+    margin: 0 0 1.75rem 0;
+    padding: 1.6rem 2rem 1.4rem;
+    border-radius: 20px;
+    background: linear-gradient(
+        145deg,
+        rgba(20, 18, 42, 0.72) 0%,
+        rgba(10, 10, 24, 0.58) 100%
+    );
+    border: 1px solid rgba(167, 139, 250, 0.16);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    animation: fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(192, 132, 252, 0.55) 35%,
+        rgba(129, 140, 248, 0.55) 65%,
+        transparent 100%
+    );
+}
+.hero-section::after {
+    content: '';
+    position: absolute;
+    top: -40%; right: -15%;
+    width: 55%; height: 180%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(99, 102, 241, 0.09) 0%,
+        transparent 68%
+    );
+    pointer-events: none;
+}
+.hero-inner {
+    position: relative;
+    z-index: 1;
+}
+.hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     font-family: 'Space Grotesk', sans-serif;
-    letter-spacing: -0.04em;
-    margin-bottom: 0;
-    filter: drop-shadow(0 2px 8px rgba(129, 140, 248, 0.2));
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #c4b5fd;
+    margin-bottom: 0.7rem;
+    padding: 0.32rem 0.8rem;
+    border-radius: 100px;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.22);
+}
+.hero-eyebrow-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.55);
+    flex-shrink: 0;
+    animation: pulse 2.2s ease-in-out infinite;
+}
+.hero-title {
+    background: linear-gradient(
+        120deg,
+        #f3e8ff 0%,
+        #d8b4fe 18%,
+        #c084fc 38%,
+        #818cf8 62%,
+        #6366f1 82%,
+        #a5b4fc 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: clamp(2rem, 4.5vw, 3.15rem);
+    font-weight: 800;
+    font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: 0.06em;
+    line-height: 1.08;
+    margin: 0 0 0.55rem 0;
+    filter: drop-shadow(0 2px 14px rgba(129, 140, 248, 0.28));
+}
+.hero-title-sep {
+    -webkit-text-fill-color: rgba(192, 132, 252, 0.55);
+    font-weight: 500;
 }
 .hero-sub {
-    color: #a1a1aa; font-size: 0.95rem; margin-top: 0.25rem; font-weight: 300;
+    color: #c8c8d0;
+    font-size: clamp(0.88rem, 1.8vw, 1.02rem);
+    font-weight: 400;
+    line-height: 1.65;
+    max-width: 54ch;
+    margin: 0;
+    letter-spacing: 0.01em;
+}
+.hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 1rem;
+}
+.hero-tag {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #b0b0b8;
+    padding: 0.26rem 0.62rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    letter-spacing: 0.02em;
+}
+@media (max-width: 640px) {
+    .hero-section {
+        padding: 1.2rem 1.15rem 1.05rem;
+        margin-bottom: 1.25rem;
+        border-radius: 16px;
+    }
+    .hero-title { letter-spacing: 0.04em; }
 }
 
-/* ── Sidebar ────────────────────────────────── */
+/* ── Sidebar (2026 glass panel) ─────────────── */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #07070d 0%, #030306 100%);
-    border-right: 1px solid rgba(167, 139, 250, 0.15);
+    background: linear-gradient(165deg, #0a0914 0%, #040408 55%, #030306 100%);
+    border-right: 1px solid rgba(167, 139, 250, 0.14);
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.45);
+}
+section[data-testid="stSidebar"] > div {
+    background: transparent !important;
+}
+[data-testid="stSidebarContent"] {
+    padding: 0.85rem 0.9rem 1.25rem !important;
+    animation: fadeUp 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: 0.35rem !important;
+}
+[data-testid="stSidebar"] hr {
+    border: none !important;
+    height: 1px !important;
+    margin: 0.65rem 0 !important;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(167, 139, 250, 0.22) 35%,
+        rgba(129, 140, 248, 0.22) 65%,
+        transparent 100%
+    ) !important;
+}
+
+/* Brand header card */
+.sidebar-header {
+    position: relative;
+    padding: 1.05rem 1rem 0.95rem;
+    margin-bottom: 0.15rem;
+    border-radius: 16px;
+    background: linear-gradient(
+        145deg,
+        rgba(20, 18, 42, 0.72) 0%,
+        rgba(10, 10, 24, 0.58) 100%
+    );
+    border: 1px solid rgba(167, 139, 250, 0.16);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow:
+        0 6px 24px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+.sidebar-header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(192, 132, 252, 0.5) 40%,
+        rgba(129, 140, 248, 0.5) 60%,
+        transparent 100%
+    );
+}
+.sidebar-header::after {
+    content: '';
+    position: absolute;
+    top: -30%; right: -20%;
+    width: 60%; height: 140%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(99, 102, 241, 0.08) 0%,
+        transparent 70%
+    );
+    pointer-events: none;
 }
 .sidebar-brand {
-    background: linear-gradient(135deg, #c084fc, #6366f1);
+    position: relative;
+    z-index: 1;
+    background: linear-gradient(
+        120deg,
+        #f3e8ff 0%,
+        #d8b4fe 20%,
+        #c084fc 40%,
+        #818cf8 65%,
+        #6366f1 85%,
+        #a5b4fc 100%
+    );
+    background-size: 200% auto;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
-    font-size: 1.8rem; font-weight: 800;
+    font-size: 1.55rem;
+    font-weight: 800;
     font-family: 'Space Grotesk', sans-serif;
-    letter-spacing: -0.03em;
+    letter-spacing: 0.05em;
+    line-height: 1.15;
+    margin: 0;
+    filter: drop-shadow(0 2px 10px rgba(129, 140, 248, 0.25));
+}
+.sidebar-sub {
+    position: relative;
+    z-index: 1;
+    color: #9ca3af;
+    font-size: 0.72rem;
+    font-weight: 400;
+    line-height: 1.55;
+    margin: 0.45rem 0 0 0;
+    letter-spacing: 0.02em;
+}
+.sidebar-eyebrow {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #c4b5fd;
+    margin-bottom: 0.5rem;
+    padding: 0.28rem 0.65rem;
+    border-radius: 100px;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+}
+.sidebar-eyebrow-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.55);
+    animation: pulse 2.2s ease-in-out infinite;
 }
 
-/* ── Status badges ──────────────────────────── */
-.status-card {
-    padding: 0.7rem 0.95rem;
-    border-radius: 12px;
-    margin-bottom: 0.6rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    background: rgba(15, 15, 25, 0.7);
-    border: 1px solid rgba(167, 139, 250, 0.15);
-    backdrop-filter: blur(12px);
-    display: flex; align-items: center; gap: 0.6rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    transition: all 0.25s ease;
+/* Section headers */
+.sidebar-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.15rem 0 0.45rem 0;
+    padding: 0.15rem 0;
 }
-.status-card:hover {
-    border-color: rgba(167, 139, 250, 0.35);
-    box-shadow: 0 4px 20px rgba(167, 139, 250, 0.15);
-    transform: translateY(-1px);
+.sidebar-section-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.18);
+    flex-shrink: 0;
+}
+.sidebar-section-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #e4e4e7;
+}
+
+/* Health status pills */
+.health-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+    margin-top: 0.15rem;
+}
+.health-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background: rgba(12, 12, 22, 0.65);
+    border: 1px solid rgba(167, 139, 250, 0.12);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    transition:
+        border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.health-pill:hover {
+    border-color: rgba(167, 139, 250, 0.28);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+    transform: translateX(2px);
+}
+.health-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: box-shadow 0.18s ease;
+}
+.health-dot--up {
+    background: #34d399;
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.55);
+    animation: pulse 2.2s ease-in-out infinite;
+}
+.health-dot--down {
+    background: #f87171;
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.45);
+}
+.health-dot--warn {
+    background: #fbbf24;
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+.health-dot--idle {
+    background: #71717a;
+    box-shadow: none;
+}
+.health-pill-label {
+    color: #d4d4d8;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.health-pill-status {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.5rem;
+    border-radius: 100px;
+    flex-shrink: 0;
+    margin-left: auto;
+    white-space: nowrap;
+}
+.health-pill-status--up {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.22);
+}
+.health-pill-status--down {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.22);
+}
+.health-pill-status--warn {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.22);
+}
+.health-pill-status--idle {
+    color: #a1a1aa;
+    background: rgba(161, 161, 170, 0.08);
+    border: 1px solid rgba(161, 161, 170, 0.15);
+}
+
+/* Sidebar-scoped inputs & upload */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] {
+    background: rgba(10, 10, 20, 0.55) !important;
+    border: 1px dashed rgba(167, 139, 250, 0.28) !important;
+    border-radius: 12px !important;
+    padding: 0.55rem 0.65rem !important;
+    transition:
+        border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        background 0.18s ease,
+        box-shadow 0.18s ease !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"]:hover {
+    border-color: rgba(167, 139, 250, 0.45) !important;
+    background: rgba(15, 15, 28, 0.65) !important;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.08) !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+    padding: 0.35rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small {
+    color: #71717a !important;
+    font-size: 0.72rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #a78bfa, #6366f1) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.4rem 1rem !important;
+    font-weight: 600 !important;
+    font-size: 0.78rem !important;
+    transition:
+        box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover {
+    box-shadow: 0 0 14px rgba(167, 139, 250, 0.35) !important;
+    transform: translateY(-1px) !important;
+}
+[data-testid="stSidebar"] div[data-baseweb="input"] {
+    background: rgba(8, 8, 15, 0.85) !important;
+    border: 1px solid rgba(167, 139, 250, 0.18) !important;
+    border-radius: 10px !important;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease !important;
+}
+[data-testid="stSidebar"] div[data-baseweb="input"]:focus-within {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 10px rgba(129, 140, 248, 0.25) !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background: rgba(12, 12, 22, 0.75) !important;
+    border: 1px solid rgba(167, 139, 250, 0.18) !important;
+    border-radius: 10px !important;
+    font-size: 0.82rem !important;
+    transition:
+        border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    border-color: rgba(167, 139, 250, 0.4) !important;
+    color: #c4b5fd !important;
+    box-shadow: 0 0 12px rgba(167, 139, 250, 0.15) !important;
+    transform: translateY(-1px) !important;
+}
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label {
+    color: #a1a1aa !important;
+    font-size: 0.82rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background: rgba(10, 10, 20, 0.5) !important;
+    border: 1px solid rgba(167, 139, 250, 0.12) !important;
+    border-radius: 10px !important;
 }
 
 /* ── Chat messages ──────────────────────────── */
@@ -240,8 +663,18 @@ span[data-baseweb="checkbox"] > div {
 # ── Session state init ────────────────────────────────────────────────
 
 
+def _reset_breaker_widgets_on_server_restart() -> None:
+    """Drop stale Force Fail checkbox state after a Streamlit worker restart."""
+    if st.session_state.get("_inayat_boot_token") == _APP_BOOT_TOKEN:
+        return
+    st.session_state["_inayat_boot_token"] = _APP_BOOT_TOKEN
+    for key in ("resilience_fail_mem0", "resilience_fail_neo4j"):
+        st.session_state.pop(key, None)
+
+
 def _init_state() -> None:
     """Initialise all session state keys once."""
+    _reset_breaker_widgets_on_server_restart()
     # Pre-populate user_id from query params if available
     default_user = st.query_params.get("user", "")
     if default_user and f"messages_{default_user}" not in st.session_state:
@@ -282,19 +715,61 @@ def _get_health_monitor():
     return HealthMonitor()
 
 
+# ── Sidebar helpers ───────────────────────────────────────────────────
+
+
+def _sidebar_section(icon: str, title: str) -> None:
+    """Render a styled sidebar section header."""
+    st.markdown(
+        f"<div class='sidebar-section-header'>"
+        f"<span class='sidebar-section-icon'>{icon}</span>"
+        f"<span class='sidebar-section-title'>{title}</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _health_pill_html(status: str, label: str) -> str:
+    """Convert emoji status string to a modern health pill."""
+    if "🟢" in status or "Connected" in status:
+        dot_cls, status_cls, text = "health-dot--up", "health-pill-status--up", "Connected"
+    elif "🔴" in status or "Unreachable" in status or "Forced" in status:
+        dot_cls, status_cls, text = "health-dot--down", "health-pill-status--down", status.replace("🟢 ", "").replace("🔴 ", "").replace("🟡 ", "").replace("⚪ ", "")
+    elif "🟡" in status or "Degraded" in status:
+        dot_cls, status_cls, text = "health-dot--warn", "health-pill-status--warn", "Degraded"
+    else:
+        dot_cls, status_cls, text = "health-dot--idle", "health-pill-status--idle", status.replace("🟢 ", "").replace("🔴 ", "").replace("🟡 ", "").replace("⚪ ", "")
+    return (
+        f"<div class='health-pill'>"
+        f"<span class='health-dot {dot_cls}' aria-hidden='true'></span>"
+        f"<span class='health-pill-label'>{label}</span>"
+        f"<span class='health-pill-status {status_cls}'>{text}</span>"
+        f"</div>"
+    )
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────
 
 
 def _render_sidebar() -> None:
     with st.sidebar:
         st.markdown(
-            "<div class='sidebar-brand'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True
+            """
+            <div class='sidebar-header'>
+                <div class='sidebar-eyebrow'>
+                    <span class='sidebar-eyebrow-dot' aria-hidden='true'></span>
+                    Agent Console
+                </div>
+                <div class='sidebar-brand'>I.N.A.Y.A.T.</div>
+                <p class='sidebar-sub'>Intelligent Neural Architecture for Yielding Agentic Thinking</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        st.caption("Intelligent Neural Architecture for Yielding Agentic Thinking")
         st.markdown("---")
 
         # User profile
-        st.markdown("##### 👤 User Profile")
+        _sidebar_section("👤", "User Profile")
         name = st.text_input(
             "Your name",
             value=st.session_state.user_id,
@@ -321,16 +796,59 @@ def _render_sidebar() -> None:
         st.markdown("---")
 
         # Document Ingestion
-        st.markdown("##### 📂 Ingest Documents")
+        _sidebar_section("📂", "Ingest Documents")
         uploaded_files = st.file_uploader(
             "Upload PDFs or TXT files",
             type=["pdf", "txt"],
             accept_multiple_files=True,
             label_visibility="collapsed",
         )
-        if uploaded_files:
-            from core.ingest import build_index, save_uploads
+        from core.ingest import (
+            build_index,
+            get_index_status,
+            list_user_documents,
+            save_uploads,
+            unindexed_document_names,
+        )
 
+        on_disk = list_user_documents(st.session_state.user_id)
+        if on_disk:
+            st.caption("On disk:")
+            for row in on_disk:
+                kb = row["size"] / 1024
+                st.caption(f"• {row['name']} ({kb:.1f} KB)")
+
+        pending_names = unindexed_document_names(st.session_state.user_id)
+        already_indexed = [
+            row["name"] for row in on_disk if row["name"] not in pending_names
+        ]
+        if already_indexed:
+            st.caption("Already indexed (unchanged): " + ", ".join(already_indexed))
+        auto_key = tuple(pending_names)
+        if (
+            pending_names
+            and not uploaded_files
+            and st.session_state.get("_ingest_auto_key") != auto_key
+        ):
+            st.session_state._ingest_auto_key = auto_key
+            st.info("Saved files are not indexed yet: " + ", ".join(pending_names))
+            try:
+                with st.spinner(
+                    f"Indexing {len(pending_names)} pending file(s): {', '.join(pending_names)}"
+                ):
+                    result = build_index(
+                        st.session_state.user_id, only_files=pending_names
+                    )
+                if result is None:
+                    err = get_index_status(st.session_state.user_id).get("error")
+                    st.error(err or "Index build returned no index. Check logs.")
+                else:
+                    st.success("Graph index updated!")
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Indexing failed: {exc}")
+
+        if uploaded_files:
             payloads = [(f.name, f.getbuffer().tobytes()) for f in uploaded_files]
             try:
                 saved = save_uploads(
@@ -341,15 +859,40 @@ def _render_sidebar() -> None:
                 saved = []
 
             if saved:
-                with st.spinner("Indexing new files..."):
-                    build_index(st.session_state.user_id)
-                    st.success("Graph Index updated!")
-                    st.rerun()
+                st.success("Saved: " + ", ".join(saved))
+            to_index = saved or (
+                unindexed_document_names(st.session_state.user_id)
+                if uploaded_files
+                else []
+            )
+            if to_index:
+                job = get_index_status(st.session_state.user_id)
+                if job.get("status") == "building":
+                    st.info("Indexing already in progress — files are on disk.")
+                else:
+                    names = ", ".join(to_index)
+                    try:
+                        with st.spinner(
+                            f"Indexing {len(to_index)} file(s): {names}"
+                        ):
+                            result = build_index(
+                                st.session_state.user_id, only_files=to_index
+                            )
+                        if result is None:
+                            err = get_index_status(st.session_state.user_id).get("error")
+                            st.error(err or "Index build returned no index. Check logs.")
+                        else:
+                            st.success("Graph index updated!")
+                            st.rerun()
+                    except Exception as exc:
+                        st.error(f"Indexing failed: {exc}")
+            elif uploaded_files:
+                st.caption("Those files are already saved and indexed.")
 
         st.markdown("---")
 
         # Health panel
-        st.markdown("##### 🛡️ Service Health")
+        _sidebar_section("🛡️", "Service Health")
         if st.button("🔄 Refresh", use_container_width=True):
             with st.spinner("Probing services…"):
                 monitor = _get_health_monitor()
@@ -360,10 +903,15 @@ def _render_sidebar() -> None:
         # Override health display if forced failures are active
         import core.memory as mem
         import core.graph_store as gs
+        from core.resilience import clear_stale_forced_breakers
+
+        clear_stale_forced_breakers()
+        _reset_breaker_widgets_on_server_restart()
 
         is_mem_forced = getattr(mem._cb, "forced_open", False)
         is_graph_forced = getattr(gs._cb, "forced_open", False)
 
+        pills = []
         for svc, label in [
             ("gemini", "Gemini LLM"),
             ("mem0", "Mem0 Memory"),
@@ -374,10 +922,12 @@ def _render_sidebar() -> None:
                 status = "🔴 Forced Fail"
             elif svc == "neo4j" and is_graph_forced:
                 status = "🔴 Forced Fail"
-            st.markdown(
-                f"<div class='status-card'>{status}&ensp;{label}</div>",
-                unsafe_allow_html=True,
-            )
+            pills.append(_health_pill_html(status, label))
+
+        st.markdown(
+            f"<div class='health-grid'>{''.join(pills)}</div>",
+            unsafe_allow_html=True,
+        )
 
         # Startup warnings
         for w in st.session_state.startup_warnings:
@@ -385,12 +935,17 @@ def _render_sidebar() -> None:
 
         # Resilience Testing Panel (demo mode only)
         st.markdown("---")
-        st.markdown("##### 🧪 Resilience Testing")
+        _sidebar_section("🧪", "Resilience Testing")
 
         from core.resilience import DemoModeRequired, set_breaker_forced_open
         from core.settings import get_settings
 
         demo_mode = get_settings().demo_mode
+        if not demo_mode:
+            # Disabled toggles must mirror breaker state (no stale checked UI).
+            st.session_state["resilience_fail_mem0"] = is_mem_forced
+            st.session_state["resilience_fail_neo4j"] = is_graph_forced
+
         fail_mem0 = st.checkbox(
             "🔥 Force Fail Mem0",
             value=is_mem_forced,
@@ -429,7 +984,7 @@ def _render_sidebar() -> None:
         st.markdown("---")
 
         # Actions
-        st.markdown("##### ⚙️ Actions")
+        _sidebar_section("⚙️", "Actions")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🗑 Clear Memory", use_container_width=True):
@@ -615,16 +1170,10 @@ def main() -> None:
 
     # ── Pre-warm Knowledge Graph Index ────────────────────────────────
     if "index_warmed" not in st.session_state:
-        with st.spinner("🧠 Bootstrapping PropertyGraphIndex (Neo4j)..."):
-            try:
-                from core.ingest import get_index
-
-                get_index()
-                st.session_state.index_warmed = True
-                st.session_state.startup_warning_details = None
-            except Exception as e:
-                st.session_state.startup_warning_details = str(e)
-                st.session_state.index_warmed = False
+        # Do not call get_index() here — from_existing on the shared Aura
+        # graph blocks the UI. Chat retrieves Chunks by user_id directly.
+        st.session_state.index_warmed = True
+        st.session_state.startup_warning_details = None
 
     # ── Sandbox warning indicator ──
     if getattr(st.session_state, "startup_warning_details", None):
@@ -643,12 +1192,29 @@ def main() -> None:
         )
 
     # ── Header ────────────────────────────────────────────────────────
-    st.markdown("<div class='hero-title'>I.N.A.Y.A.T.</div>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='hero-sub'>"
-        "An agentic RAG system that remembers you, reads your documents, "
-        "and visualises its knowledge graph."
-        "</div>",
+        """
+        <div class="hero-section">
+            <div class="hero-inner">
+                <div class="hero-eyebrow">
+                    <span class="hero-eyebrow-dot" aria-hidden="true"></span>
+                    Agentic RAG
+                </div>
+                <h1 class="hero-title" aria-label="I.N.A.Y.A.T.">
+                    I<span class="hero-title-sep">.</span>N<span class="hero-title-sep">.</span>A<span class="hero-title-sep">.</span>Y<span class="hero-title-sep">.</span>A<span class="hero-title-sep">.</span>T<span class="hero-title-sep">.</span>
+                </h1>
+                <p class="hero-sub">
+                    An agentic RAG system that remembers you, reads your documents,
+                    and visualises its knowledge graph.
+                </p>
+                <div class="hero-tags" aria-label="Capabilities">
+                    <span class="hero-tag">Persistent Memory</span>
+                    <span class="hero-tag">Document RAG</span>
+                    <span class="hero-tag">Knowledge Graph</span>
+                </div>
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -696,14 +1262,77 @@ def main() -> None:
 
         import json
 
-        nodes_js = json.dumps(graph_data["nodes"])
-        edges_js = json.dumps(graph_data["edges"])
+        vis_nodes = []
+        node_details = {}
+        for node in graph_data["nodes"]:
+            nid = node["id"]
+            node_details[str(nid)] = {
+                "id": nid,
+                "label": node.get("label"),
+                "group": node.get("group"),
+                "properties": node.get("properties") or {},
+            }
+            vis_nodes.append(
+                {
+                    "id": nid,
+                    "label": node.get("label"),
+                    "group": node.get("group"),
+                    "title": node.get("title") or node.get("label"),
+                }
+            )
+        vis_edges = []
+        edge_details = {}
+        for idx, edge in enumerate(graph_data["edges"], 1):
+            eid = edge.get("id") or f"e{idx}"
+            edge_details[str(eid)] = {
+                "id": eid,
+                "from": edge.get("from"),
+                "to": edge.get("to"),
+                "label": edge.get("label"),
+                "properties": edge.get("properties") or {},
+            }
+            vis_edges.append(
+                {
+                    "id": eid,
+                    "from": edge.get("from"),
+                    "to": edge.get("to"),
+                    "label": edge.get("label"),
+                }
+            )
 
-        is_mock_banner = (
-            "⚠️ **Showing System Architecture Graph** (Neo4j is empty or offline)"
-            if graph_data["is_mock"]
-            else "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
+        nodes_js = (
+            json.dumps(vis_nodes, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
         )
+        edges_js = (
+            json.dumps(vis_edges, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+        )
+        node_details_js = (
+            json.dumps(node_details, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+        )
+        edge_details_js = (
+            json.dumps(edge_details, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+        )
+
+        reason = graph_data.get("mock_reason")
+        if not graph_data["is_mock"]:
+            is_mock_banner = "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
+        elif reason == "offline":
+            is_mock_banner = (
+                "⚠️ **Showing System Architecture Graph** (Neo4j is unreachable)"
+            )
+        else:
+            is_mock_banner = (
+                "📄 **No documents indexed yet.** Upload a PDF to build your "
+                "knowledge graph. Showing the system architecture preview until then."
+            )
         st.info(is_mock_banner)
 
         # Generate Vis.js Network HTML with detailed interactive panel
@@ -877,6 +1506,8 @@ def main() -> None:
             }};
             var nodes = new vis.DataSet({nodes_js});
             var edges = new vis.DataSet({edges_js});
+            var nodeDetails = {node_details_js};
+            var edgeDetails = {edge_details_js};
             var container = document.getElementById('mynetwork');
             var data = {{
                 nodes: nodes,
@@ -931,7 +1562,9 @@ def main() -> None:
                     }}
                 }},
                 interaction: {{
-                    hover: true
+                    hover: true,
+                    selectable: true,
+                    selectConnectedEdges: false
                 }}
             }};
             var network = new vis.Network(container, data, options);
@@ -939,6 +1572,15 @@ def main() -> None:
             var drawerBody = document.getElementById('drawer-body');
             var drawerHeader = document.getElementById('drawer-header');
             
+            function escapeHtml(value) {{
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }}
+
             function renderProperties(props) {{
                 if (!props || Object.keys(props).length === 0) {{
                     return '<p style="color: #71717a; font-style: italic; font-size: 0.8rem;">None</p>';
@@ -947,11 +1589,11 @@ def main() -> None:
                 for (var key in props) {{
                     if (props.hasOwnProperty(key)) {{
                         html += '<div>';
-                        html += '<div class="section-label">' + key + '</div>';
+                        html += '<div class="section-label">' + escapeHtml(key) + '</div>';
                         if (key === 'text') {{
-                            html += '<div class="prop-box" style="white-space: pre-wrap;">' + props[key] + '</div>';
+                            html += '<div class="prop-box" style="white-space: pre-wrap;">' + escapeHtml(props[key]) + '</div>';
                         }} else {{
-                            html += '<div class="section-val">' + props[key] + '</div>';
+                            html += '<div class="section-val">' + escapeHtml(props[key]) + '</div>';
                         }}
                         html += '</div>';
                     }}
@@ -972,8 +1614,20 @@ def main() -> None:
                 return 'tag-entity';
             }}
             
+            function lookupNode(nodeId) {{
+                var fromMap = nodeDetails[String(nodeId)];
+                if (fromMap) return fromMap;
+                return nodes.get(nodeId);
+            }}
+
+            function lookupEdge(edgeId) {{
+                var fromMap = edgeDetails[String(edgeId)];
+                if (fromMap) return fromMap;
+                return edges.get(edgeId);
+            }}
+            
             function selectNodeHandler(nodeId) {{
-                var node = nodes.get(nodeId);
+                var node = lookupNode(nodeId);
                 if (!node) return;
                 
                 drawerHeader.innerText = "Node Details";
@@ -981,15 +1635,13 @@ def main() -> None:
                 var tagClass = getTagClass(node.group);
                 var labelName = node.label || 'Unnamed Node';
                 var groupName = node.group || 'Entity';
+                var props = node.properties || {{}};
                 
-                // Formulate prompt
                 var promptText = "Tell me more about " + labelName;
-                if (node.properties) {{
-                    if (node.properties.text) {{
-                        promptText = "From the document chunk details, tell me more about: " + node.properties.text.substring(0, 150).replace(/"/g, '') + "...";
-                    }} else if (node.properties.Description) {{
-                        promptText = "Tell me about " + labelName + ": " + node.properties.Description;
-                    }}
+                if (props.text) {{
+                    promptText = "From the document chunk details, tell me more about: " + String(props.text).substring(0, 150).replace(/"/g, '') + "...";
+                }} else if (props.Description) {{
+                    promptText = "Tell me about " + labelName + ": " + props.Description;
                 }}
                 
                 var base64Prompt = btoa(unescape(encodeURIComponent(promptText)));
@@ -997,13 +1649,13 @@ def main() -> None:
                 var html = '';
                 html += '<div class="drawer-section">';
                 html += '<div class="section-label">Node Name</div>';
-                html += '<div class="section-val" style="font-weight:600; font-size:0.95rem;">' + labelName + '</div>';
-                html += '<span class="tag ' + tagClass + '">' + groupName + '</span>';
+                html += '<div class="section-val" style="font-weight:600; font-size:0.95rem;">' + escapeHtml(labelName) + '</div>';
+                html += '<span class="tag ' + tagClass + '">' + escapeHtml(groupName) + '</span>';
                 html += '</div>';
                 
                 html += '<div class="drawer-section">';
                 html += '<div class="section-label">Attributes</div>';
-                html += renderProperties(node.properties);
+                html += renderProperties(props);
                 html += '</div>';
                 
                 html += '<button class="use-btn" onclick="triggerUseInChat(\\\'' + base64Prompt + '\\\')">';
@@ -1014,13 +1666,13 @@ def main() -> None:
             }}
             
             function selectEdgeHandler(edgeId) {{
-                var edge = edges.get(edgeId);
+                var edge = lookupEdge(edgeId);
                 if (!edge) return;
                 
                 drawerHeader.innerText = "Connection Details";
                 
-                var fromNode = nodes.get(edge.from);
-                var toNode = nodes.get(edge.to);
+                var fromNode = lookupNode(edge.from);
+                var toNode = lookupNode(edge.to);
                 var fromName = fromNode ? fromNode.label : 'Node ' + edge.from;
                 var toName = toNode ? toNode.label : 'Node ' + edge.to;
                 
@@ -1036,17 +1688,17 @@ def main() -> None:
                 var html = '';
                 html += '<div class="drawer-section">';
                 html += '<div class="section-label">Source Node</div>';
-                html += '<div class="section-val" style="font-weight:600;">' + fromName + '</div>';
+                html += '<div class="section-val" style="font-weight:600;">' + escapeHtml(fromName) + '</div>';
                 html += '</div>';
                 
                 html += '<div class="drawer-section">';
                 html += '<div class="section-label">Relationship Path</div>';
-                html += '<div class="section-val" style="color:#c084fc; font-weight:600;">→ ' + relType + ' →</div>';
+                html += '<div class="section-val" style="color:#c084fc; font-weight:600;">→ ' + escapeHtml(relType) + ' →</div>';
                 html += '</div>';
                 
                 html += '<div class="drawer-section">';
                 html += '<div class="section-label">Target Node</div>';
-                html += '<div class="section-val" style="font-weight:600;">' + toName + '</div>';
+                html += '<div class="section-val" style="font-weight:600;">' + escapeHtml(toName) + '</div>';
                 html += '</div>';
                 
                 html += '<div class="drawer-section">';
@@ -1061,23 +1713,15 @@ def main() -> None:
                 drawerBody.innerHTML = html;
             }}
             
-            network.on("selectNode", function(params) {{
-                if (params.nodes.length > 0) {{
+            network.on("click", function(params) {{
+                if (params.nodes && params.nodes.length > 0) {{
                     selectNodeHandler(params.nodes[0]);
+                    return;
                 }}
-            }});
-            
-            network.on("selectEdge", function(params) {{
-                if (params.nodes.length === 0 && params.edges.length > 0) {{
+                if (params.edges && params.edges.length > 0) {{
                     selectEdgeHandler(params.edges[0]);
+                    return;
                 }}
-            }});
-            
-            network.on("deselectNode", function(params) {{
-                resetDrawer();
-            }});
-            
-            network.on("deselectEdge", function(params) {{
                 resetDrawer();
             }});
             
@@ -1152,7 +1796,7 @@ def main() -> None:
         </body>
         </html>
         """
-        st.components.v1.html(html_content, height=520)
+        st.components.v1.html(html_content, height=520, scrolling=True)
 
     # ── User Input Query Resolution (Executed in rerun / background) ────
     # In Streamlit's new layout, we check if there's a new query appended to state that needs processing

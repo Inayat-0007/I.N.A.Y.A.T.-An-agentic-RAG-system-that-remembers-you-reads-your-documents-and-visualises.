@@ -122,6 +122,25 @@ class TestBackwardsCompatibility(unittest.TestCase):
         set_breaker_forced_open(cb, False, service="Mem0")
         self.assertFalse(cb.forced_open)
 
+    def test_clear_stale_forced_breakers_when_demo_off(self) -> None:
+        from core.resilience import CircuitBreaker, clear_stale_forced_breakers, set_breaker_forced_open
+        from core.settings import clear_settings_cache
+
+        os.environ["INAYAT_DEMO_MODE"] = "true"
+        clear_settings_cache()
+        import core.memory as mem
+
+        set_breaker_forced_open(mem._cb, True, service="Mem0")
+        self.assertTrue(mem._cb.forced_open)
+
+        os.environ["INAYAT_DEMO_MODE"] = "false"
+        clear_settings_cache()
+        clear_stale_forced_breakers()
+        self.assertFalse(mem._cb.forced_open)
+
+        os.environ["INAYAT_DEMO_MODE"] = "true"
+        clear_settings_cache()
+
 
 class TestIdentity(unittest.TestCase):
     """Verify user id sanitization."""
@@ -383,6 +402,69 @@ class TestFailureDesign(unittest.TestCase):
         self.assertIn("c1", ids)
         self.assertNotIn("c2", ids)
         self.assertNotIn("e1", ids)
+        self.assertFalse(graph["is_mock"])
+        self.assertIsNone(graph.get("mock_reason"))
+
+    def test_assemble_keeps_isolated_user_chunks(self) -> None:
+        from core.graph_store import _assemble_visualization
+
+        records = [
+            {
+                "source_id": "c1",
+                "source_name": None,
+                "source_labels": ["Chunk"],
+                "source_props": {"user_id": "alice", "file_name": "a.pdf"},
+                "target_id": None,
+                "target_name": None,
+                "target_labels": None,
+                "target_props": None,
+                "rel_type": None,
+                "rel_props": None,
+            }
+        ]
+        graph = _assemble_visualization(records, "alice")
+        self.assertFalse(graph["is_mock"])
+        self.assertEqual(len(graph["nodes"]), 1)
+
+    def test_assemble_chunk_label_from_document_text(self) -> None:
+        from core.graph_store import _assemble_visualization
+
+        records = [
+            {
+                "source_id": "c1",
+                "source_name": None,
+                "source_labels": ["__Node__", "Chunk"],
+                "source_props": {
+                    "user_id": "alice",
+                    "file_name": "report.pdf",
+                    "text": "The CEO of INAYAT is Aisha Khan.\nMore context.",
+                    "embedding": [0.1, 0.2],
+                },
+                "target_id": None,
+                "target_name": None,
+                "target_labels": None,
+                "target_props": None,
+                "rel_type": None,
+                "rel_props": None,
+            }
+        ]
+        graph = _assemble_visualization(records, "alice")
+        self.assertFalse(graph["is_mock"])
+        node = graph["nodes"][0]
+        self.assertEqual(node["group"], "Chunk")
+        self.assertIn("CEO of INAYAT", node["label"])
+        self.assertNotIn("__Node__", node["label"])
+        self.assertIn("text", node["properties"])
+        self.assertNotIn("embedding", node["properties"])
+
+    def test_empty_user_mock_is_no_documents_not_offline(self) -> None:
+        from core.graph_store import _assemble_visualization, _mock_visualization_graph
+
+        graph = _assemble_visualization([], "INAYAT_TEST_1")
+        self.assertTrue(graph["is_mock"])
+        self.assertEqual(graph["mock_reason"], "no_documents")
+        offline = _mock_visualization_graph("INAYAT_TEST_1", reason="offline")
+        self.assertEqual(offline["mock_reason"], "offline")
 
     def test_index_build_in_progress(self) -> None:
         from core import ingest as ingest_mod
@@ -433,45 +515,32 @@ class TestAgentPipeline(unittest.TestCase):
         clear_settings_cache()
 
     @patch("core.agent.configure_llama_settings")
-    @patch("core.agent.get_index")
+    @patch("core.agent.retrieve_user_chunks")
     @patch("core.agent.get_gemini_llm")
-    def test_query_rag_success(self, mock_get_llm, mock_get_index, _mock_configure) -> None:
-        # Mock index query engine
-        mock_index = MagicMock()
-        mock_engine = MagicMock()
+    def test_query_rag_success(self, mock_get_llm, mock_retrieve, _mock_configure) -> None:
+        mock_retrieve.return_value = [
+            {"text": "AI is intelligence in machines.", "file_name": "notes.txt"}
+        ]
+        mock_llm = MagicMock()
+        mock_llm.complete.return_value = "Mocked RAG response about AI."
+        mock_get_llm.return_value = mock_llm
 
-        # Create a mock response object that has source_nodes and returns the string
-        mock_response = MagicMock()
-        mock_response.source_nodes = [MagicMock()]
-        mock_response.__str__.return_value = "Mocked RAG response about AI."
-
-        mock_engine.query.return_value = mock_response
-        mock_index.as_query_engine.return_value = mock_engine
-        mock_get_index.return_value = mock_index
-
-        from core.agent import query, query_detailed
+        from core.agent import query_detailed
         from core.schemas import QueryInput
 
         result = query_detailed(QueryInput.from_raw("What is AI?"))
         self.assertEqual(result.route, "rag")
         self.assertGreater(result.source_count, 0)
         self.assertEqual(result.answer, "Mocked RAG response about AI.")
-        mock_engine.query.assert_called_once()
+        mock_llm.complete.assert_called_once()
 
     @patch("core.agent.configure_llama_settings")
-    @patch("core.agent.get_index")
+    @patch("core.agent.retrieve_user_chunks")
     @patch("core.agent.get_gemini_llm")
     def test_query_detailed_empty_sources_routes_llm(
-        self, mock_get_llm, mock_get_index, _mock_configure
+        self, mock_get_llm, mock_retrieve, _mock_configure
     ) -> None:
-        mock_index = MagicMock()
-        mock_engine = MagicMock()
-        mock_response = MagicMock()
-        mock_response.source_nodes = []
-        mock_response.__str__.return_value = "No information found."
-        mock_engine.query.return_value = mock_response
-        mock_index.as_query_engine.return_value = mock_engine
-        mock_get_index.return_value = mock_index
+        mock_retrieve.return_value = []
 
         mock_llm = MagicMock()
         mock_llm.complete.return_value = "LLM answer."
@@ -485,15 +554,13 @@ class TestAgentPipeline(unittest.TestCase):
         mock_llm.complete.assert_called_once()
 
     @patch("core.agent.configure_llama_settings")
-    @patch("core.agent.get_index")
+    @patch("core.agent.retrieve_user_chunks")
     @patch("core.agent.get_gemini_llm")
     def test_query_rag_fails_llm_fallback(
-        self, mock_get_llm, mock_get_index, _mock_configure
+        self, mock_get_llm, mock_retrieve, _mock_configure
     ) -> None:
-        # RAG fails (returns None)
-        mock_get_index.return_value = None
+        mock_retrieve.return_value = []
 
-        # LLM completes successfully
         mock_llm = MagicMock()
         mock_llm.complete.return_value = "Mocked LLM fallback response."
         mock_get_llm.return_value = mock_llm
@@ -505,21 +572,19 @@ class TestAgentPipeline(unittest.TestCase):
         mock_llm.complete.assert_called_once()
 
     @patch("core.agent.configure_llama_settings")
-    @patch("core.agent.get_index")
+    @patch("core.agent.retrieve_user_chunks")
     @patch("core.agent.get_gemini_llm")
     def test_query_rag_keeps_answer_when_sources_hedge(
-        self, mock_get_llm, mock_get_index, _mock_configure
+        self, mock_get_llm, mock_retrieve, _mock_configure
     ) -> None:
-        mock_index = MagicMock()
-        mock_engine = MagicMock()
-        mock_response = MagicMock()
-        mock_response.source_nodes = [MagicMock()]
-        mock_response.__str__.return_value = (
+        mock_retrieve.return_value = [
+            {"text": "The CEO is named.", "file_name": "facts.txt"}
+        ]
+        mock_llm = MagicMock()
+        mock_llm.complete.return_value = (
             "The document does not contain a salary figure, but the CEO is named."
         )
-        mock_engine.query.return_value = mock_response
-        mock_index.as_query_engine.return_value = mock_engine
-        mock_get_index.return_value = mock_index
+        mock_get_llm.return_value = mock_llm
 
         from core.agent import query_detailed
         from core.schemas import QueryInput
@@ -527,7 +592,7 @@ class TestAgentPipeline(unittest.TestCase):
         result = query_detailed(QueryInput.from_raw("Who is the CEO?"))
         self.assertEqual(result.route, "rag")
         self.assertGreater(result.source_count, 0)
-        mock_get_llm.assert_not_called()
+        self.assertEqual(mock_get_llm.call_count, 1)
 
 
 class TestObservability(unittest.TestCase):
@@ -621,6 +686,56 @@ class TestIngestIsolation(unittest.TestCase):
         from core.ingest import user_has_documents
 
         self.assertFalse(user_has_documents("no_such_profile_xyz"))
+
+    def test_pending_files_skips_manifest_entries(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from core.ingest import _file_fingerprint, _pending_files, _write_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_dir = Path(tmp)
+            old = user_dir / "old.txt"
+            new = user_dir / "new.txt"
+            old.write_text("already indexed", encoding="utf-8")
+            new.write_text("needs indexing", encoding="utf-8")
+            _write_manifest(user_dir, {"old.txt": _file_fingerprint(old)})
+            pending, skipped = _pending_files(user_dir)
+            self.assertEqual([p.name for p in pending], ["new.txt"])
+            self.assertEqual([p.name for p in skipped], ["old.txt"])
+            pending_only, _ = _pending_files(user_dir, only_files=["new.txt"])
+            self.assertEqual([p.name for p in pending_only], ["new.txt"])
+            manifest = json.loads((user_dir / ".indexed.json").read_text(encoding="utf-8"))
+            self.assertIn("old.txt", manifest["files"])
+
+    def test_load_documents_stamps_user_id_on_txt(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from core.ingest import _load_documents
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("INAYAT master data sample", encoding="utf-8")
+            docs = _load_documents([path], "INAYAT_TEST_1")
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0].metadata.get("user_id"), "INAYAT_TEST_1")
+        self.assertIn("master data", docs[0].text.lower())
+
+    def test_list_user_documents_returns_saved_files(self) -> None:
+        from core.ingest import list_user_documents, save_uploads, unindexed_document_names
+
+        saved = save_uploads(
+            "smoke_list_docs",
+            [("note.txt", b"hello ingest")],
+            overwrite=True,
+        )
+        self.assertEqual(saved, ["note.txt"])
+        rows = list_user_documents("smoke_list_docs")
+        names = {row["name"] for row in rows}
+        self.assertIn("note.txt", names)
+        self.assertIn("note.txt", unindexed_document_names("smoke_list_docs"))
 
 
 if __name__ == "__main__":

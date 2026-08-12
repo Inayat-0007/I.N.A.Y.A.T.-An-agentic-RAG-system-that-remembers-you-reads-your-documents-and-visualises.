@@ -8,7 +8,8 @@ resilient ``run_cypher`` helper.  Also provides the
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
 
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 from neo4j import Driver, GraphDatabase
@@ -182,8 +183,17 @@ def ping_neo4j() -> bool:
     return True
 
 
-def _mock_visualization_graph(user_id: str = "default") -> dict:
-    """Return profile-customised demo graph when live data is unavailable."""
+def _mock_visualization_graph(
+    user_id: str = "default",
+    *,
+    reason: str = "no_documents",
+) -> dict:
+    """Return profile-customised demo graph when live user data is unavailable.
+
+    ``reason`` is ``no_documents`` (Neo4j up, this user has no chunks) or
+    ``offline`` (Neo4j unreachable). Callers must not treat empty-user mock
+    graphs as a connectivity failure.
+    """
     prefix = f"{user_id}'s " if user_id and user_id.lower() != "default" else ""
     nodes = [
         {
@@ -251,6 +261,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
     ]
     edges = [
         {
+            "id": "e1",
             "from": 6,
             "to": 1,
             "label": "inputs query",
@@ -259,6 +270,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
         {
+            "id": "e2",
             "from": 1,
             "to": 3,
             "label": "fetches memories",
@@ -267,6 +279,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
         {
+            "id": "e3",
             "from": 1,
             "to": 4,
             "label": "queries facts",
@@ -275,6 +288,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
         {
+            "id": "e4",
             "from": 1,
             "to": 2,
             "label": "completes prompt",
@@ -283,6 +297,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
         {
+            "id": "e5",
             "from": 3,
             "to": 5,
             "label": "monitored by",
@@ -291,6 +306,7 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
         {
+            "id": "e6",
             "from": 4,
             "to": 5,
             "label": "monitored by",
@@ -299,7 +315,186 @@ def _mock_visualization_graph(user_id: str = "default") -> dict:
             },
         },
     ]
-    return {"nodes": nodes, "edges": edges, "is_mock": True}
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "is_mock": True,
+        "mock_reason": reason,
+    }
+
+
+def delete_user_chunks(user_id: str) -> int:
+    """Detach-delete Chunk nodes for one profile. Returns deleted count."""
+    uid = UserId.parse(user_id).value
+    rows = run_cypher(
+        """
+        MATCH (c:Chunk {user_id: $user_id})
+        WITH c
+        DETACH DELETE c
+        RETURN count(*) AS n
+        """,
+        {"user_id": uid},
+    )
+    deleted = int(rows[0]["n"]) if rows else 0
+    logger.info("Deleted %d Chunk node(s) for user %s", deleted, uid)
+    return deleted
+
+
+def retrieve_user_chunks(
+    user_id: str,
+    question: str,
+    top_k: int = 5,
+) -> List[Dict[str, Any]]:
+    """Return this user's Chunk texts ranked by embedding similarity.
+
+    PropertyGraphIndex vector search hits ``__Entity__`` nodes (LLM triplets).
+    ImplicitPathExtractor ingest writes Chunk embeddings only, so chat must
+    query Chunk nodes filtered by ``user_id`` — not the shared entity index.
+    """
+    uid = UserId.parse(user_id).value
+    k = max(1, int(top_k))
+    embedding: Optional[List[float]] = None
+    try:
+        from llama_index.core import Settings as LISettings
+
+        from core.llm_setup import configure_llama_settings
+
+        configure_llama_settings()
+        embed_model = getattr(LISettings, "embed_model", None)
+        if embed_model is not None:
+            embedding = list(embed_model.get_text_embedding(question))
+    except Exception as exc:
+        logger.warning("Could not embed question for chunk retrieval: %s", exc)
+
+    if embedding:
+        rows = run_cypher(
+            """
+            MATCH (c:Chunk {user_id: $user_id})
+            WHERE c.embedding IS NOT NULL
+              AND c.text IS NOT NULL
+              AND NOT c.text STARTS WITH '%PDF'
+            WITH c, vector.similarity.cosine(c.embedding, $embedding) AS score
+            ORDER BY score DESC
+            LIMIT $k
+            RETURN c.text AS text, c.file_name AS file_name, score
+            """,
+            {"user_id": uid, "embedding": embedding, "k": k},
+        )
+        if rows:
+            return rows
+
+    rows = run_cypher(
+        """
+        MATCH (c:Chunk {user_id: $user_id})
+        WHERE c.text IS NOT NULL AND NOT c.text STARTS WITH '%PDF'
+        RETURN c.text AS text, c.file_name AS file_name, 0.0 AS score
+        LIMIT $k
+        """,
+        {"user_id": uid, "k": k},
+    )
+    return rows
+
+
+def stamp_chunks_for_user(user_id: str, file_names: Sequence[str]) -> int:
+    """Set ``user_id`` on Chunks whose file_path belongs to this profile."""
+    uid = UserId.parse(user_id).value
+    names = [Path(name).name for name in file_names if name]
+    if not names:
+        return 0
+    rows = run_cypher(
+        """
+        MATCH (c:Chunk)
+        WHERE c.file_name IN $files
+          AND (
+            c.user_id = $user_id
+            OR c.file_path CONTAINS $needle_slash
+            OR c.file_path CONTAINS $needle_win
+          )
+        SET c.user_id = $user_id
+        RETURN count(c) AS n
+        """,
+        {
+            "user_id": uid,
+            "files": names,
+            "needle_slash": f"documents/{uid}",
+            "needle_win": f"documents\\{uid}",
+        },
+    )
+    stamped = int(rows[0]["n"]) if rows else 0
+    logger.info("Stamped user_id on %d Chunk node(s) for %s", stamped, uid)
+    return stamped
+
+
+_INTERNAL_LABEL_PREFIX = "__"
+_PROP_SKIP = {
+    "embedding",
+    "_node_content",
+    "_node_type",
+    "id",
+    "doc_id",
+    "document_id",
+    "ref_doc_id",
+    "file_path",
+    "file_size",
+    "creation_date",
+    "last_modified_date",
+}
+
+
+def _public_labels(labels: Optional[List[str]]) -> List[str]:
+    """Drop LlamaIndex internal labels such as ``__Node__`` / ``__Entity__``."""
+    raw = [str(item) for item in (labels or []) if item]
+    public = [item for item in raw if not item.startswith(_INTERNAL_LABEL_PREFIX)]
+    return public or ["Entity"]
+
+
+def _vis_group(labels: Optional[List[str]]) -> str:
+    group = _public_labels(labels)[0]
+    lowered = group.lower()
+    if lowered == "chunk":
+        return "Chunk"
+    if lowered == "entity":
+        return "Entity"
+    return group
+
+
+def _text_snippet(text: Any, limit: int = 48) -> str:
+    """First readable line of chunk text for graph labels (never PDF bytes)."""
+    if not isinstance(text, str):
+        return ""
+    stripped = text.strip()
+    if not stripped or stripped.startswith("%PDF") or stripped == "[PDF binary omitted]":
+        return ""
+    for line in stripped.splitlines():
+        cleaned = " ".join(line.split())
+        if len(cleaned) >= 4:
+            return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
+    cleaned = " ".join(stripped.split())
+    return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
+
+
+def _node_display_label(
+    labels: Optional[List[str]],
+    props: dict,
+    name: Any,
+    nid: str,
+) -> str:
+    """Human label from document text, not LlamaIndex architecture names."""
+    group = _vis_group(labels)
+    snippet = _text_snippet(props.get("text"), 48)
+    if group == "Chunk" and snippet:
+        return snippet
+    if isinstance(name, str) and name.strip() and not name.startswith(_INTERNAL_LABEL_PREFIX):
+        return name.strip()[:60]
+    named = props.get("name")
+    if isinstance(named, str) and named.strip() and not named.startswith(_INTERNAL_LABEL_PREFIX):
+        return named.strip()[:60]
+    file_name = props.get("file_name")
+    if file_name:
+        stem = Path(str(file_name)).stem.strip()
+        if stem:
+            return stem[:48]
+    return group
 
 
 def _node_allowed_for_user(labels: List[str], props: dict, user_id: str) -> bool:
@@ -327,12 +522,21 @@ def _assemble_visualization(records: List[dict], user_id: str) -> dict:
             return {}
         cleaned = {}
         for key, value in props.items():
-            if key in ("embedding", "_node_content"):
+            if key in _PROP_SKIP:
                 continue
-            if key == "text" and isinstance(value, str) and len(value) > 1000:
-                cleaned[key] = value[:1000] + "..."
-            else:
-                cleaned[key] = value
+            if key == "text":
+                if not isinstance(value, str):
+                    continue
+                if value.lstrip().startswith("%PDF"):
+                    cleaned[key] = "[PDF binary omitted]"
+                    continue
+                preview = "".join(
+                    ch if ch.isprintable() or ch in "\n\t" else " "
+                    for ch in value[:180]
+                )
+                cleaned[key] = preview + ("..." if len(value) > 180 else "")
+                continue
+            cleaned[key] = value
         return cleaned
 
     raw_nodes: dict = {}
@@ -345,34 +549,35 @@ def _assemble_visualization(records: List[dict], user_id: str) -> dict:
     for rec in records:
         s_id = rec.get("source_id")
         t_id = rec.get("target_id")
-        if not s_id or not t_id:
+        if not s_id:
             continue
         s_props = clean_props(rec.get("source_props"))
-        t_props = clean_props(rec.get("target_props"))
         s_labels = rec.get("source_labels") or ["Entity"]
-        t_labels = rec.get("target_labels") or ["Entity"]
         raw_nodes[s_id] = {
             "labels": s_labels,
             "props": s_props,
             "name": rec.get("source_name"),
         }
-        raw_nodes[t_id] = {
-            "labels": t_labels,
-            "props": t_props,
-            "name": rec.get("target_name"),
-        }
-        raw_edges.append(
-            {
-                "from": s_id,
-                "to": t_id,
-                "label": rec.get("rel_type") or "RELATED",
-                "properties": clean_props(rec.get("rel_props")),
-            }
-        )
         _touch(s_id)
-        _touch(t_id)
-        neighbors[s_id].add(t_id)
-        neighbors[t_id].add(s_id)
+        if t_id:
+            t_props = clean_props(rec.get("target_props"))
+            t_labels = rec.get("target_labels") or ["Entity"]
+            raw_nodes[t_id] = {
+                "labels": t_labels,
+                "props": t_props,
+                "name": rec.get("target_name"),
+            }
+            raw_edges.append(
+                {
+                    "from": s_id,
+                    "to": t_id,
+                    "label": rec.get("rel_type") or "RELATED",
+                    "properties": clean_props(rec.get("rel_props")),
+                }
+            )
+            _touch(t_id)
+            neighbors[s_id].add(t_id)
+            neighbors[t_id].add(s_id)
 
     chunk_owner: dict = {}
     for nid, node in raw_nodes.items():
@@ -401,60 +606,72 @@ def _assemble_visualization(records: List[dict], user_id: str) -> dict:
         and raw_nodes[nid]["props"].get("user_id") == user_id
     ]
     if not user_chunks:
-        return _mock_visualization_graph(user_id)
+        return _mock_visualization_graph(user_id, reason="no_documents")
 
     nodes: dict = {}
     edges: list = []
     for nid in allowed:
         node = raw_nodes[nid]
         labels = node["labels"] or ["Entity"]
-        label = labels[0]
+        group = _vis_group(labels)
         props = node["props"]
-        name = node["name"]
-        if not name:
-            if label == "Chunk" and props.get("file_name"):
-                name = f"Chunk: {props.get('file_name')}"
-            else:
-                name = f"{label} ({str(nid)[:6]})"
+        display = _node_display_label(labels, props, node["name"], nid)
+        hover = _text_snippet(props.get("text"), 140) or display
         nodes[nid] = {
             "id": nid,
-            "label": name,
-            "group": label,
+            "label": display,
+            "group": group,
             "properties": props,
-            "title": f"<b>{label}</b>: {name}",
+            "title": f"{group}: {hover}",
         }
 
+    edge_index = 0
     for edge in raw_edges:
         if edge["from"] in allowed and edge["to"] in allowed:
-            edges.append(edge)
+            edge_index += 1
+            edges.append({**edge, "id": edge.get("id") or f"e{edge_index}"})
 
     if not nodes:
-        return _mock_visualization_graph(user_id)
-    return {"nodes": list(nodes.values()), "edges": edges, "is_mock": False}
+        return _mock_visualization_graph(user_id, reason="no_documents")
+    return {
+        "nodes": list(nodes.values()),
+        "edges": edges,
+        "is_mock": False,
+        "mock_reason": None,
+    }
+
+
+def _neo4j_reachable() -> bool:
+    """Return True when the driver can run a trivial query."""
+    if not _cb.allow_request() or get_driver() is None:
+        return False
+    try:
+        ping_neo4j()
+        return True
+    except Exception:
+        return False
 
 
 def get_visualization_data(user_id: str = "default") -> dict:
-    """Retrieve user-scoped nodes/edges; mock graph when Neo4j is unavailable."""
+    """Retrieve user-scoped nodes/edges; mock graph when empty or offline."""
     uid = UserId.parse(user_id).value
-    if not _cb.allow_request():
-        logger.debug("Neo4j circuit OPEN — returning mock visualization for %s.", uid)
-        return _mock_visualization_graph(uid)
+    if not _cb.allow_request() or get_driver() is None:
+        logger.debug("Neo4j unavailable — mock visualization (offline) for %s.", uid)
+        return _mock_visualization_graph(uid, reason="offline")
 
     query_str = """
     MATCH (c:Chunk {user_id: $user_id})
-    MATCH (s)-[r]->(t)
-    WHERE (s = c OR t = c)
-       OR EXISTS { MATCH (c)-[*1..2]-(s) }
-       OR EXISTS { MATCH (c)-[*1..2]-(t) }
+    WITH c LIMIT 50
+    OPTIONAL MATCH (c)-[r]-(other)
     RETURN
-        elementId(s) AS source_id,
-        s.name AS source_name,
-        labels(s) AS source_labels,
-        properties(s) AS source_props,
-        elementId(t) AS target_id,
-        t.name AS target_name,
-        labels(t) AS target_labels,
-        properties(t) AS target_props,
+        elementId(c) AS source_id,
+        c.name AS source_name,
+        labels(c) AS source_labels,
+        properties(c) AS source_props,
+        elementId(other) AS target_id,
+        other.name AS target_name,
+        labels(other) AS target_labels,
+        properties(other) AS target_props,
         type(r) AS rel_type,
         properties(r) AS rel_props
     LIMIT 120
@@ -462,6 +679,9 @@ def get_visualization_data(user_id: str = "default") -> dict:
     records = run_cypher(query_str, {"user_id": uid})
 
     if not records:
-        return _mock_visualization_graph(uid)
+        if not _neo4j_reachable():
+            return _mock_visualization_graph(uid, reason="offline")
+        logger.debug("No chunks for %s — mock visualization (no_documents).", uid)
+        return _mock_visualization_graph(uid, reason="no_documents")
 
     return _assemble_visualization(records, uid)

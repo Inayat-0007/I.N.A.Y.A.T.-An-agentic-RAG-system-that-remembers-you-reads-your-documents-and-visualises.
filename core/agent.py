@@ -10,6 +10,7 @@ import logging
 import time
 from typing import Optional
 
+from core.graph_store import retrieve_user_chunks
 from core.ingest import get_index
 from core.llm_setup import configure_llama_settings, get_gemini_llm
 from core.observability import log_query_event, service_breaker_status, trace_span
@@ -122,47 +123,49 @@ def query_detailed(inp: QueryInput) -> QueryResult:
 
     with trace_span("agent.query", user_id=user.value):
         configure_llama_settings(settings)
-        index = get_index(user.value)
 
-        if index is not None:
+        def _chunk_rag() -> Optional[tuple[str, int]]:
+            chunks = retrieve_user_chunks(
+                user.value, inp.question, top_k=settings.similarity_top_k
+            )
+            if not chunks:
+                logger.info("No user-scoped chunks — falling back to pure LLM.")
+                return None
+            excerpts = []
+            for row in chunks:
+                name = row.get("file_name") or "document"
+                text = (row.get("text") or "").strip()
+                if not text:
+                    continue
+                excerpts.append(f"[{name}]\n{text[:4000]}")
+            if not excerpts:
+                return None
+            context = "\n\n".join(excerpts)
+            prompt = (
+                "You are I.N.A.Y.A.T. Answer using only the document excerpts "
+                "below. If they are insufficient, say so briefly.\n\n"
+                f"{context}\n\n"
+                f"{augmented}"
+            )
+            llm = get_gemini_llm()
+            return str(llm.complete(prompt)), len(excerpts)
 
-            def _rag_query() -> Optional[tuple[str, int]]:
-                from llama_index.core.vector_stores import MetadataFilter, MetadataFilters
-
-                filters = MetadataFilters(
-                    filters=[MetadataFilter(key="user_id", value=user.value)]
-                )
-                engine = _build_query_engine(index, settings, filters)
-                response = engine.query(augmented)
-                res_str = str(response)
-                source_nodes = getattr(response, "source_nodes", None) or []
-                source_count = len(source_nodes)
-
-                if not source_nodes:
-                    logger.info("RAG context insufficient — falling back to pure LLM.")
-                    return None
-                if any(phrase in res_str.lower() for phrase in _DISCLAIMERS) and source_count == 0:
-                    logger.info("RAG disclaimer with zero sources — falling back to pure LLM.")
-                    return None
-
-                return res_str, source_count
-
-            rag_started = time.perf_counter()
-            rag_out = safe_execute(_rag_query, fallback=None)
-            rag_ms = round((time.perf_counter() - rag_started) * 1000, 2)
-            if rag_out is not None:
-                answer, source_count = rag_out
-                return _finalize_result(
-                    QueryResult(
-                        answer=answer,
-                        route="rag",
-                        source_count=source_count,
-                        used_memory=used_memory,
-                        latency_ms=round((time.perf_counter() - started) * 1000, 2),
-                    ),
-                    user.value,
-                    rag_ms=rag_ms,
-                )
+        rag_started = time.perf_counter()
+        rag_out = safe_execute(_chunk_rag, fallback=None)
+        rag_ms = round((time.perf_counter() - rag_started) * 1000, 2)
+        if rag_out is not None:
+            answer, source_count = rag_out
+            return _finalize_result(
+                QueryResult(
+                    answer=answer,
+                    route="rag",
+                    source_count=source_count,
+                    used_memory=used_memory,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                ),
+                user.value,
+                rag_ms=rag_ms,
+            )
 
         logger.warning("RAG unavailable — falling back to pure Gemini chat.")
 

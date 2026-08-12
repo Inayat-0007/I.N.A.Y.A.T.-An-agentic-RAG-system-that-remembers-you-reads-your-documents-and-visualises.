@@ -168,6 +168,7 @@ class TestBackendGraphStore(unittest.TestCase):
         self.assertIn("nodes", data)
         self.assertIn("edges", data)
         self.assertIn("is_mock", data)
+        self.assertIn("mock_reason", data)
 
         nodes = data["nodes"]
         if len(nodes) > 0:

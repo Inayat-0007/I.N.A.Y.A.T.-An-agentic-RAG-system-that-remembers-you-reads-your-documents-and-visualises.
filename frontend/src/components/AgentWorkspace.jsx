@@ -40,6 +40,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphIsMock, setGraphIsMock] = useState(false);
+  const [graphMockReason, setGraphMockReason] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
 
@@ -86,11 +87,34 @@ export default function AgentWorkspace({ userId, setUserId }) {
       .then((res) => res.json())
       .then((graphData) => {
         setGraphIsMock(Boolean(graphData.is_mock));
+        setGraphMockReason(graphData.mock_reason || null);
         const container = containerRef.current;
         if (!container) return;
 
-        const nodes = new DataSet(graphData.nodes);
-        const edges = new DataSet(graphData.edges);
+        const nodeDetails = {};
+        (graphData.nodes || []).forEach((n) => {
+          nodeDetails[String(n.id)] = n;
+        });
+        const edgeDetails = {};
+        const visEdges = (graphData.edges || []).map((edge, idx) => {
+          const id = edge.id || `e${idx + 1}`;
+          const withId = { ...edge, id };
+          edgeDetails[String(id)] = withId;
+          return {
+            id,
+            from: edge.from,
+            to: edge.to,
+            label: edge.label,
+          };
+        });
+        const visNodes = (graphData.nodes || []).map((n) => ({
+          id: n.id,
+          label: n.label,
+          group: n.group,
+          title: n.title || n.label,
+        }));
+        const nodes = new DataSet(visNodes);
+        const edges = new DataSet(visEdges);
 
         const options = {
           nodes: {
@@ -134,45 +158,34 @@ export default function AgentWorkspace({ userId, setUserId }) {
               springLength: 120,
             },
           },
-          interaction: { hover: true },
+          interaction: { hover: true, selectable: true, selectConnectedEdges: false },
         };
 
         const network = new Network(container, { nodes, edges }, options);
         networkRef.current = network;
 
-        // Event hooks
-        network.on("selectNode", (params) => {
-          if (params.nodes.length > 0) {
+        network.on("click", (params) => {
+          if (params.nodes && params.nodes.length > 0) {
             const nodeId = params.nodes[0];
-            const node = nodes.get(nodeId);
-            setSelectedNode(node);
+            setSelectedNode(nodeDetails[String(nodeId)] || nodes.get(nodeId));
             setSelectedEdge(null);
+            return;
           }
-        });
-
-        network.on("selectEdge", (params) => {
-          if (params.nodes.length === 0 && params.edges.length > 0) {
+          if (params.edges && params.edges.length > 0) {
             const edgeId = params.edges[0];
-            const edge = edges.get(edgeId);
-
-            // Get node labels
-            const fromNode = nodes.get(edge.from);
-            const toNode = nodes.get(edge.to);
-
+            const edge = edgeDetails[String(edgeId)] || edges.get(edgeId);
+            const fromNode =
+              nodeDetails[String(edge.from)] || nodes.get(edge.from);
+            const toNode = nodeDetails[String(edge.to)] || nodes.get(edge.to);
             setSelectedEdge({
               ...edge,
               fromLabel: fromNode ? fromNode.label : `Node ${edge.from}`,
               toLabel: toNode ? toNode.label : `Node ${edge.to}`,
             });
             setSelectedNode(null);
+            return;
           }
-        });
-
-        network.on("deselectNode", () => {
           setSelectedNode(null);
-        });
-
-        network.on("deselectEdge", () => {
           setSelectedEdge(null);
         });
       })
@@ -774,7 +787,9 @@ export default function AgentWorkspace({ userId, setUserId }) {
               </div>
               {graphIsMock && (
                 <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-amber-500/15 border border-amber-400/40 text-amber-300 px-4 py-2 rounded-xl text-xs font-heading font-bold">
-                  Mock graph — no chunks indexed for this user
+                  {graphMockReason === "offline"
+                    ? "Neo4j is unreachable — showing system architecture preview"
+                    : "No documents indexed yet. Upload a PDF to build your knowledge graph."}
                 </div>
               )}
 
