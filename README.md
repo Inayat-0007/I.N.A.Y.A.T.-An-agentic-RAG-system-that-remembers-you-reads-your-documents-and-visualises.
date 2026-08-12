@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
   <img src="https://img.shields.io/badge/Tests-52%20smoke%20%2F%2010%20live-success" alt="Tests">
   <img src="https://img.shields.io/badge/CI-smoke%20%2B%20frontend-informational" alt="CI Scope">
-  <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
+  <img src="https://img.shields.io/badge/Docker-SPA%20%3A8000-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
   <br>
   <img src="https://img.shields.io/badge/UI-Streamlit%20%2B%20React-FF4B4B" alt="Dual UI">
@@ -48,15 +48,18 @@ See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 ## 📋 Table of Contents
 
 1. [Overview](#-overview)
-2. [System Architecture](#-system-architecture)
-3. [Tech Stack](#️-tech-stack)
-4. [Project Structure](#-project-structure)
-5. [Key Features](#-key-features)
-6. [Installation & Launch](#️-installation--launch)
-7. [Testing Suite](#-testing-suite)
-8. [CI Pipeline](#-ci-pipeline)
-9. [Documentation](#-documentation)
-10. [License](#-license)
+2. [What this repo now includes](#-what-this-repo-now-includes)
+3. [System Architecture](#-system-architecture)
+4. [Tech Stack](#️-tech-stack)
+5. [Project Structure](#-project-structure)
+6. [Key Features](#-key-features)
+7. [Installation & Launch](#️-installation--launch)
+8. [Environment](#-environment)
+9. [Testing Suite](#-testing-suite)
+10. [CI Pipeline](#-ci-pipeline)
+11. [Documentation](#-documentation)
+12. [Non-goals](#-non-goals)
+13. [License](#-license)
 
 ---
 
@@ -66,6 +69,33 @@ See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
 Upload PDFs or TXT files per profile. Sample documents ship under `data/documents/_samples/` — copy them into `data/documents/{your_name}/` then rebuild the index (see `_samples/README.md`).
 
+The 2026-08-13 remediation (`HOW_TO_FIX.md` §1–§13) is **complete**: docs match the code, CI matches Docker (Python 3.12), user ids are validated, query routing is explicit JSON, graph vis is user-filtered, and observability logs structured query events without prompts or API keys.
+
+---
+
+## ✨ What this repo now includes
+
+Shipped on branch `cursor/what-and-how-to-fix-docs` (see [STATUS.md](STATUS.md) for the step checklist):
+
+| Area | What changed |
+| ---- | ------------ |
+| **Docs** | Canonical README / STATUS / CONTEXT / LICENSE; `WHAT_TO_FIX.md` is historical inventory; examiner one-liner uses **52 smoke / 10 live** |
+| **Seed RAG** | MIT sample PDFs in `data/documents/_samples/` (CEO fact: Dr. Inayat Hussain) |
+| **Config** | `core/settings.py` (`InayatSettings`); chunk/model from env; overlap must be &lt; chunk size |
+| **Identity** | `core/identity.py` — `UserId.parse()` rejects `../` and `/` |
+| **Query contract** | `QueryResult` with `route`, `used_memory`, `source_count`; wrapper `query()` still returns `str` |
+| **Memory** | `build_memory_context()` search + get_all, 2000-char cap, fallback if Mem0 is down |
+| **RAG gate** | Disclaimer/hedge does **not** force LLM fallback when sources exist |
+| **Ingest** | PDF `%PDF` check; `INAYAT_SYNC_INGEST=true` default; `INAYAT_ALLOW_EMPTY_FROM_EXISTING=false` |
+| **Graph** | Visualization Cypher filtered to the current user; `is_mock` when no chunks |
+| **API** | FastAPI lifespan, CORS from settings, optional `INAYAT_API_KEY` + `X-INAYAT-KEY`, `X-Request-ID` |
+| **Demo safety** | Breaker `forced_open` requires `INAYAT_DEMO_MODE=true` (403 otherwise) |
+| **Docker** | Default compose = SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501` |
+| **Flags** | MMR off by default; async ingest off by default (sync wait-for-200) |
+| **Observability** | `core/observability.py` — `event=query user_id=... route=... latency_ms=... source_count=... mem0_ok=... neo4j_ok=...` |
+| **SPA** | Badges from API `route` / `used_memory` (not inferred from answer text); mock-graph banner; 403 copy for demo mode |
+| **Tests** | 52 smoke (no keys required for new identity/settings/route tests) + `tests/test_api_contract.py` + live CEO skipUnless |
+
 ---
 
 ## 🔁 System Architecture
@@ -73,12 +103,17 @@ Upload PDFs or TXT files per profile. Sample documents ship under `data/document
 ```mermaid
 flowchart TD
     User([User Profile]) -->|Query / Upload| UI[Streamlit app.py or React + api.py]
-    UI --> Health[Health & Circuit Breakers]
-    Health --> Mem0[Mem0 Cloud]
-    Health --> Neo4j[Neo4j AuraDB]
-    Mem0 & Neo4j --> LLM[Gemini Flash Lite]
-    LLM --> UI
+    UI --> Agent[query_detailed]
+    Agent --> Mem0[Mem0 Cloud]
+    Agent --> Neo4j[Neo4j PropertyGraphIndex]
+    Agent --> LLM[Gemini Flash Lite]
+    Agent -->|route rag llm apology| UI
+    Health[Health and circuit breakers] --> Mem0
+    Health --> Neo4j
+    Health --> LLM
 ```
+
+Degradation order: **RAG** (sources present) → **LLM** (no sources / RAG failed) → **apology** (LLM also failed). Circuit breakers isolate Mem0 and Neo4j failures so the process stays up.
 
 ---
 
@@ -104,43 +139,44 @@ Pinned versions are in [constraints.txt](constraints.txt).
 
 ```
 INAYAT/
-├── app.py                        # Streamlit UI (Docker default)
-├── api.py                        # FastAPI REST + SPA static host
+├── app.py                        # Streamlit UI (--profile streamlit)
+├── api.py                        # FastAPI REST + SPA static host (:8000)
 ├── run_spa.py                    # Dev: uvicorn + Vite
-├── warmup.py                     # Service warmup script
-├── activate.ps1                  # Windows one-click launcher
+├── warmup.py                     # Neo4j RETURN 1; optional default index
+├── activate.ps1                  # Windows launcher (sets INAYAT_DEMO_MODE)
 ├── requirements.txt
 ├── constraints.txt               # Pinned dependency versions
 ├── .env.example
-├── LICENSE
+├── LICENSE                       # MIT
 ├── STATUS.md                     # One-page examiner status
-├── WHAT_TO_FIX.md
-├── HOW_TO_FIX.md
+├── CONTEXT.md                    # Contributor module map
+├── WHAT_TO_FIX.md                # Historical issue inventory
+├── HOW_TO_FIX.md                 # Remediation spec (implemented)
 ├── core/
-│   ├── settings.py               # Typed env configuration
-│   ├── identity.py               # user_id validation
-│   ├── observability.py          # Span logging
+│   ├── settings.py               # Typed env (InayatSettings)
+│   ├── identity.py               # UserId.parse()
+│   ├── observability.py          # request_id + event=query logs
 │   ├── schemas.py                # QueryInput / QueryResult
 │   ├── conversation.py           # Short-term chat buffer
 │   ├── ingest.py                 # Uploads + index lifecycle
-│   ├── agent.py                  # RAG query engine
+│   ├── agent.py                  # query_detailed() + query() → str
 │   ├── llm_setup.py              # Gemini LLM + embeddings
-│   ├── memory.py                 # Mem0 client
-│   ├── graph_store.py            # Neo4j + vis payload
-│   ├── resilience.py             # Circuit breakers + retries
+│   ├── memory.py                 # Mem0 + build_memory_context()
+│   ├── graph_store.py            # Neo4j + user-filtered vis JSON
+│   ├── resilience.py             # Circuit breakers + demo gate
 │   ├── health.py                 # HealthMonitor
 │   ├── startup.py                # Boot validation
 │   ├── compat.py                 # Backwards-compat exports
-│   └── logging_config.py
+│   └── logging_config.py         # Rotating file + console
 ├── frontend/                     # React SPA (Vite)
-├── data/
-│   └── documents/
-│       ├── .gitkeep              # Per-user uploads at runtime
-│       └── _samples/             # MIT sample PDFs (copy to {your_name}/)
+├── data/documents/_samples/      # MIT sample PDFs
 ├── tests/
 │   ├── smoke_test.py             # 52 tests (CI)
+│   ├── test_api_contract.py      # FastAPI TestClient (loaded by smoke)
 │   └── backend_feature_test.py   # 10 live integration tests
-├── .github/workflows/ci.yml
+├── .github/workflows/
+│   ├── ci.yml                    # Python 3.12 + smoke + frontend-build
+│   └── integration.yml           # Weekly / manual live tests
 ├── Dockerfile                    # Streamlit :8501
 ├── Dockerfile.spa                # Multi-stage Vite + uvicorn :8000
 └── docker-compose.yml            # Default SPA; --profile streamlit
@@ -150,20 +186,26 @@ INAYAT/
 
 ## ✨ Key Features
 
-- **Isolated user sessions** — `data/documents/{user_id}/` + Mem0 `user_id` + metadata filters on a **shared Neo4j database** (not per-user Aura instances). Isolation is demo-grade metadata, not multi-tenant SaaS. Production follow-on: stamp `user_id` on entity nodes at write time.
-- **Property-graph RAG** — LlamaIndex `PropertyGraphIndex` over Neo4j (graph + vector). There is **no separate BM25 index**; hybrid BM25 is a later epic.
-- **MMR retrieval** — off by default (`INAYAT_MMR_ENABLED=false`); when on, falls back to `similarity_top_k` if LlamaIndex rejects MMR kwargs
-- **Chunking** — `INAYAT_CHUNK_SIZE` / `INAYAT_CHUNK_OVERLAP` (defaults 512/64). **Re-upload / rebuild the index after changing chunk settings** — existing Neo4j nodes are not rewritten.
-- **Empty-folder isolation** — `INAYAT_ALLOW_EMPTY_FROM_EXISTING=false` by default (no shared-graph attach). Set `true` only for demos on a pre-filled Aura instance.
-- **Ingest** — Streamlit stays sync. `POST /api/upload` is sync when `INAYAT_SYNC_INGEST=true` (default); set `false` for 202 + `/api/index-status` polling
-- **Dual UI** — Streamlit for demos; FastAPI+React for modern API/SPA path
-- **Circuit breakers** — Mem0/Neo4j degradation without crashes (`INAYAT_DEMO_MODE` for toggles)
+- **Isolated user sessions** — `data/documents/{user_id}/` + Mem0 `user_id` + metadata filters on a **shared Neo4j database** (not per-user Aura instances). Isolation is demo-grade metadata, not multi-tenant SaaS.
+- **Validated user ids** — `UserId.parse()`; invalid names (`../etc`, `alice/bob`) fail at the API with 400.
+- **Property-graph RAG** — LlamaIndex `PropertyGraphIndex` over Neo4j. There is **no separate BM25 index**.
+- **Explicit routes** — SPA badges use `route` (`rag` / `llm` / `apology`) and `used_memory` from `/api/query`, not answer-text heuristics.
+- **MMR retrieval** — off by default (`INAYAT_MMR_ENABLED=false`); falls back to `similarity_top_k` if LlamaIndex rejects MMR kwargs.
+- **Chunking** — `INAYAT_CHUNK_SIZE` / `INAYAT_CHUNK_OVERLAP` (defaults 512/64). Rebuild the index after changing chunk settings.
+- **Empty-folder isolation** — `INAYAT_ALLOW_EMPTY_FROM_EXISTING=false` by default (no shared-graph attach).
+- **Ingest** — Streamlit stays sync. `POST /api/upload` waits for 200 when `INAYAT_SYNC_INGEST=true` (default).
+- **Dual UI** — Streamlit for demos; FastAPI+React for the Docker default SPA.
+- **Circuit breakers** — Mem0/Neo4j degradation without crashes. Toggles need `INAYAT_DEMO_MODE=true`.
+- **Optional API key** — empty `INAYAT_API_KEY` keeps the open demo; if set, mutating `/api/*` routes require `X-INAYAT-KEY`.
+- **Observability** — UUID `X-Request-ID` per HTTP request and Streamlit turn; structured query logs; no full prompts or keys.
 
 ---
 
 ## 🛠️ Installation & Launch
 
-### Option A: Native Windows (recommended for demos)
+Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
+
+### Option A: Native Windows (Streamlit demo)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File activate.ps1
@@ -171,23 +213,29 @@ powershell -ExecutionPolicy Bypass -File activate.ps1
 
 Sets `INAYAT_DEMO_MODE=true`, runs warmup, launches Streamlit at `http://localhost:8501`.
 
+Copy samples into your profile folder first:
+
+```powershell
+Copy-Item -Recurse "data\documents\_samples\*" "data\documents\YourName\"
+```
+
 ### Option B: Docker (default = SPA on :8000)
 
 ```bash
 docker compose up --build
 ```
 
-Serves FastAPI + built React at `http://localhost:8000`. Healthcheck: `GET /api/health`. Data volume `./data`.
+Serves FastAPI + built React at `http://localhost:8000`. Healthcheck: `GET /api/health`. Volume: `./data`.
 
-Streamlit (legacy demo UI):
+Streamlit:
 
 ```bash
 docker compose --profile streamlit up --build
 ```
 
-Binds `8501`. Images: `Dockerfile.spa` (multi-stage npm build) and `Dockerfile` (Streamlit).
+Binds `8501`. Images: `Dockerfile.spa` (multi-stage `npm ci && npm run build`) and `Dockerfile` (Streamlit).
 
-Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required). Optional `INAYAT_API_KEY` gates mutating `/api/*` routes via `X-INAYAT-KEY`.
+Optional `INAYAT_API_KEY` gates mutating `/api/*` routes via `X-INAYAT-KEY`.
 
 ### Option C: FastAPI + React dev
 
@@ -198,21 +246,40 @@ python run_spa.py
 
 API on `:8000`, Vite on `:5173`.
 
-Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
+---
+
+## 🔐 Environment
+
+| Variable | Required | Notes |
+| -------- | -------- | ----- |
+| `GEMINI_API_KEY` | **Yes** | Generation + embeddings |
+| `MEM0_API_KEY` | Recommended | Memory degrades if missing |
+| `NEO4J_URI` / `NEO4J_PASSWORD` | Recommended | Graph degrades if missing |
+| `NEO4J_USERNAME` | Default `neo4j` | |
+| `INAYAT_DEMO_MODE` | Demo toggles | `true` for breaker UI |
+| `INAYAT_API_KEY` | Optional | If set, send `X-INAYAT-KEY` |
+| `INAYAT_CORS_ORIGINS` | Optional | Explicit allow-list |
+| `INAYAT_MMR_ENABLED` | Default `false` | |
+| `INAYAT_SYNC_INGEST` | Default `true` | `false` → 202 + poll |
+| `INAYAT_ALLOW_EMPTY_FROM_EXISTING` | Default `false` | Safer empty folders |
+
+See `.env.example` for chunk size, top_k, log level, and memory context cap.
 
 ---
 
 ## 🧪 Testing Suite
 
 ```bash
-# CI smoke suite (52 tests)
+# CI smoke suite (52 tests) — no live keys required for identity/settings/route tests
 python tests/smoke_test.py
 
 # Live integration (10 tests — requires real API keys)
 python tests/backend_feature_test.py
 ```
 
-Do **not** use pytest for CI; the supported runner is `python tests/smoke_test.py`.
+Do **not** use pytest for CI; the supported runner is `python tests/smoke_test.py`. The smoke `__main__` also loads `tests/test_api_contract.py` (invalid `user_id` → 400, breaker toggle without demo → 403, CORS, `X-Request-ID`).
+
+Live RAG CEO assertion is skipped unless documents exist under a profile folder; after copying `_samples/`, the CEO fact remains asserted.
 
 ---
 
@@ -239,19 +306,21 @@ Python **3.12**, installs with `pip install -r requirements.txt -c constraints.t
 | File                                                       | Role                                               |
 | ---------------------------------------------------------- | -------------------------------------------------- |
 | [README.md](README.md)                                     | This file — install, architecture, canonical facts |
+| [STATUS.md](STATUS.md)                                     | One-page examiner sheet + completed §10 order      |
 | [CONTEXT.md](CONTEXT.md)                                   | Contributor module map                             |
-| [STATUS.md](STATUS.md)                                     | One-page examiner sheet                            |
-| [WHAT_TO_FIX.md](WHAT_TO_FIX.md)                           | Issue inventory                                    |
-| [HOW_TO_FIX.md](HOW_TO_FIX.md)                             | Remediation architecture                           |
+| [WHAT_TO_FIX.md](WHAT_TO_FIX.md)                           | Issue inventory (superseded for counts)            |
+| [HOW_TO_FIX.md](HOW_TO_FIX.md)                             | Remediation spec (implemented §1–§13)              |
 | [MASTER_DEEP_DIVE_REPORT.txt](MASTER_DEEP_DIVE_REPORT.txt) | Historical audit (superseded for counts)           |
 | [demo_script.md](demo_script.md)                           | Live presentation script                           |
+
+---
+
+## 🚫 Non-goals
+
+Not in this product: LangGraph/CrewAI multi-agent orchestration, per-user Neo4j Aura instances, replacing Mem0 or Neo4j, rewriting Streamlit into React in one commit, or calling optional `INAYAT_API_KEY` “production hardening.”
 
 ---
 
 ## 📜 License
 
 MIT License — see [LICENSE](LICENSE).
-
-## Non-goals
-
-Not in this product: LangGraph/CrewAI multi-agent orchestration, per-user Neo4j Aura instances, replacing Mem0 or Neo4j, rewriting Streamlit into React in one commit, or calling optional `INAYAT_API_KEY` “production hardening.”

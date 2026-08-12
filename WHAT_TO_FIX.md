@@ -27,6 +27,7 @@ This request is analysis/explanation, not a code-change task.
 **Core backend exists and is structured:** `core/` has agent, memory, graph store, health, resilience, startup, logging modules.
 
 **Two app surfaces coexist:**
+
 - `app.py` = full Streamlit app
 - `api.py` + `frontend/` = FastAPI + React SPA path (modern UI route)
 
@@ -39,6 +40,7 @@ This request is analysis/explanation, not a code-change task.
 **Knowledge graph visualization exists:** graph data API and UI integration are present (not just placeholder docs).
 
 **Testing status (codebase level):**
+
 - `tests/smoke_test.py` exists (CI-oriented)
 - `tests/backend_feature_test.py` exists (deeper integration coverage)
 - CI workflow currently runs lint + secrets scan + smoke test.
@@ -48,6 +50,7 @@ This request is analysis/explanation, not a code-change task.
 **Data status (Copilot claim):** `data/documents/` already contains sample scenario PDFs, so RAG has seed docs in repo.
 
 **Important current inconsistencies / risks**
+
 - Documentation drift: `README.md`, `CONTEXT.md`, and `MASTER_DEEP_DIVE_REPORT.txt` do not fully agree (test counts, what is “missing,” UI state, etc.).
 - Python version mismatch across files: README badge (3.14), CI (3.11), Docker (3.12), docs mixed.
 - CI scope gap: CI does not run the full backend integration test suite by default.
@@ -62,15 +65,15 @@ Repo cloned and inspected at `MULTI AGENT/INAYAT`. Copilot’s maturity assessme
 
 ### Executive Verdict
 
-| Dimension | Grade | Notes |
-|-----------|-------|-------|
-| **Architecture** | B+ | Clean `core/` separation; dual UI surfaces share one backend |
-| **RAG implementation** | B | Real PropertyGraphIndex + Neo4j + Mem0; not a stub |
-| **Resilience** | A- | Custom circuit breakers, retries, graceful degradation |
-| **Multi-tenancy** | C+ | Soft isolation by `user_id` string — no auth, shared Neo4j DB |
-| **Testing** | B- | 31 tests exist; CI only runs 21 smoke tests |
-| **Documentation** | D+ | Significant drift across README, CONTEXT, MASTER report |
-| **DevOps** | B | Docker + CI + constraints; Python version mismatch |
+| Dimension              | Grade | Notes                                                         |
+| ---------------------- | ----- | ------------------------------------------------------------- |
+| **Architecture**       | B+    | Clean `core/` separation; dual UI surfaces share one backend  |
+| **RAG implementation** | B     | Real PropertyGraphIndex + Neo4j + Mem0; not a stub            |
+| **Resilience**         | A-    | Custom circuit breakers, retries, graceful degradation        |
+| **Multi-tenancy**      | C+    | Soft isolation by `user_id` string — no auth, shared Neo4j DB |
+| **Testing**            | B-    | 31 tests exist; CI only runs 21 smoke tests                   |
+| **Documentation**      | D+    | Significant drift across README, CONTEXT, MASTER report       |
+| **DevOps**             | B     | Docker + CI + constraints; Python version mismatch            |
 
 **Bottom line:** Feature-rich and examiner-demo ready. Needs a **documentation truth pass** and **CI alignment** before it presents as a single trustworthy status to reviewers.
 
@@ -99,6 +102,7 @@ External:
 ```
 
 **Data flow between surfaces:**
+
 - Streamlit → agent / memory / graph_store
 - SPA → FastAPI → agent / memory / graph_store
 - agent → llm_setup + graph_store
@@ -145,12 +149,14 @@ User message
 ```
 
 The RAG quality gate in `core/agent.py` is a pragmatic pattern:
+
 - `MetadataFilters` / `MetadataFilter(key="user_id", value=user_id)`
 - `index.as_query_engine(include_text=True, similarity_top_k=5, filters=filters)`
 - Disclaimer phrases: `"does not contain"`, `"no information"`, `"don't have"`, `"not mentioned"`, `"not clear"`, `"does not mention"`, `"cannot find"`
 - If no `source_nodes` OR disclaimer match → treat as miss, fall back to LLM
 
 **What's missing vs. agentic RAG best practices:**
+
 - No **MMR** (Maximal Marginal Relevance) — only `similarity_top_k=5`
 - No **hybrid BM25 + vector** — relies on LlamaIndex PropertyGraphIndex internals
 - Chunk size is **hardcoded** in `configure_llama_settings()`, not env-configurable
@@ -160,11 +166,11 @@ The RAG quality gate in `core/agent.py` is a pragmatic pattern:
 
 ### 3. Dual UI Surfaces (Coexistence, Not Convergence)
 
-| Surface | Entry | Docker default | Maturity |
-|---------|-------|----------------|----------|
-| **Streamlit** | `app.py` | **Yes** (`CMD streamlit run app.py`) | Full-featured, demo-oriented |
-| **React SPA** | `run_spa.py` → `api.py` + Vite | No | Modern UI, production path |
-| **FastAPI only** | `uvicorn api:app` | No | Serves built `frontend/dist/` |
+| Surface          | Entry                          | Docker default                       | Maturity                      |
+| ---------------- | ------------------------------ | ------------------------------------ | ----------------------------- |
+| **Streamlit**    | `app.py`                       | **Yes** (`CMD streamlit run app.py`) | Full-featured, demo-oriented  |
+| **React SPA**    | `run_spa.py` → `api.py` + Vite | No                                   | Modern UI, production path    |
+| **FastAPI only** | `uvicorn api:app`              | No                                   | Serves built `frontend/dist/` |
 
 This is a **forked presentation layer**, not a migration. Docker still ships Streamlit. The React path is the architecturally cleaner surface (REST API, Pydantic models, CORS, static mount) but is not the default deployment artifact.
 
@@ -172,14 +178,14 @@ This is a **forked presentation layer**, not a migration. Docker still ships Str
 
 ### 4. User Isolation — Soft Multi-Tenancy
 
-| Layer | Mechanism | Risk |
-|-------|-----------|------|
-| Documents | `data/documents/{user_id}/` | No `user_id` sanitization (path traversal possible) |
-| RAG filter | `MetadataFilter(key="user_id")` | Depends on metadata surviving indexing |
-| Neo4j | **Shared database** for all users | Entity nodes 1–2 hops from chunks may leak cross-user context in graph vis |
-| Mem0 | API-scoped `user_id` | Anyone who guesses a name can query that profile |
-| Chat history | Streamlit `session_state` / React `localStorage` | Client-only, not server-persisted |
-| Auth | **None** | Display name = identity |
+| Layer        | Mechanism                                        | Risk                                                                       |
+| ------------ | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| Documents    | `data/documents/{user_id}/`                      | No `user_id` sanitization (path traversal possible)                        |
+| RAG filter   | `MetadataFilter(key="user_id")`                  | Depends on metadata surviving indexing                                     |
+| Neo4j        | **Shared database** for all users                | Entity nodes 1–2 hops from chunks may leak cross-user context in graph vis |
+| Mem0         | API-scoped `user_id`                             | Anyone who guesses a name can query that profile                           |
+| Chat history | Streamlit `session_state` / React `localStorage` | Client-only, not server-persisted                                          |
+| Auth         | **None**                                         | Display name = identity                                                    |
 
 For a university demo this is acceptable. For production it is a **blocker**.
 
@@ -188,6 +194,7 @@ For a university demo this is acceptable. For production it is a **blocker**.
 ### 5. Resilience Layer (Strongest Engineering)
 
 Custom `CircuitBreaker` in `core/resilience.py`:
+
 - States: CLOSED → OPEN (3 failures) → HALF_OPEN (60s) → CLOSED
 - Applied to **Mem0** and **Neo4j Cypher**, not Gemini
 - `forced_open` flag for live demo of graceful degradation (sidebar + `/api/health/toggle`)
@@ -202,13 +209,14 @@ Health model: only **Gemini is critical**. Mem0 and Neo4j can be down and the ap
 
 #### Actual test inventory
 
-| File | Tests | CI runs? | Needs live APIs? |
-|------|-------|----------|------------------|
-| `tests/smoke_test.py` | **21** | **Yes** | 3 optional live pings |
-| `tests/backend_feature_test.py` | **10** | **No** | Yes (all) |
-| **Total** | **31** | 21 | — |
+| File                            | Tests  | CI runs? | Needs live APIs?      |
+| ------------------------------- | ------ | -------- | --------------------- |
+| `tests/smoke_test.py`           | **21** | **Yes**  | 3 optional live pings |
+| `tests/backend_feature_test.py` | **10** | **No**   | Yes (all)             |
+| **Total**                       | **31** | 21       | —                     |
 
 Smoke tests (`tests/smoke_test.py`) — 21 methods:
+
 - `TestImports` (8): import resilience, logging_config, llm_setup, memory, graph_store, agent, health, startup
 - `TestEnvironment` (1): `validate_env()` returns `(bool, list, list)` — does **not** require secrets
 - `TestHealthMonitor` (1): `HealthMonitor()` has keys `gemini`, `mem0`, `neo4j`
@@ -217,6 +225,7 @@ Smoke tests (`tests/smoke_test.py`) — 21 methods:
 - `TestAgentPipeline` (2): **mocked** RAG success + RAG-fail → LLM fallback
 
 Backend integration (`tests/backend_feature_test.py`) — 10 methods:
+
 - `TestBackendStartup` (2): `run_startup()` ok + health keys; `validate_env()` must have **no** missing critical vars
 - `TestBackendLLM` (2): Gemini complete `"verified"`; embedding length **3072**
 - `TestBackendResilience` (1): Breaker OPEN → HALF_OPEN after timeout → CLOSED
@@ -231,31 +240,31 @@ Backend integration (`tests/backend_feature_test.py`) — 10 methods:
 
 #### Documentation claims vs. reality
 
-| Claim (source) | Reality |
-|----------------|---------|
-| README badge: "19/19 passed" | Smoke suite has **21** tests |
-| README L130–131: smoke **19**, backend **10** | Smoke **21**; backend **10** is correct |
-| MASTER: "17-test suite" / “Present 17-test suite”; “lacks mocked LLM” | Smoke has **21**, including **mocked RAG** |
-| README badge: Python **3.14** | CI uses **3.11**, Docker uses **3.12** |
-| MASTER: Python **3.14.3** venv | Not aligned with CI/Docker |
-| CONTEXT: Python **3.11** | Matches CI only |
-| README: Gemini **1.5 Flash** / `gemini-1.5-flash` | Code: `_MODEL_NAME = "gemini-flash-lite-latest"` (`core/llm_setup.py`) |
-| `llm_setup.py` docstring still says 1.5 Flash | Code uses `gemini-flash-lite-latest` |
-| `graph_store.py` mock uses `"gemini-3.1-flash-lite"` | Third model string |
-| README: sample PDFs in `data/documents/` | Only `.gitkeep` — **no seed docs in repo** |
-| README: `assets/logo.png` | **`assets/` directory missing** (`app.py` still references it) |
-| README: `inayat_project_deep_dive.pdf`, `inayat_technical_architecture.pdf` | Present at **repo root**, not necessarily where README tree claims |
-| README: `LICENSE` / MIT badge | **LICENSE file absent** |
-| CONTEXT: Safety dependency audit in CI | **Not present** in `ci.yml` |
-| CONTEXT: push to **`main` only** | CI watches **`main` and `master`** |
-| CONTEXT file map lists only `tests/smoke_test.py` | Omits `backend_feature_test.py` |
-| CONTEXT: `HealthStatus` class | Health module is `HealthMonitor` |
-| CONTEXT: **PyVis** graph tab | README: **Vis.js**; MASTER: **graph visual omitted** |
-| MASTER: no in-app upload | README: isolated ingest + ingest PDF in demo; repo has `frontend/` + `api.py` upload |
-| MASTER: startup blocks if **all** critical keys missing | Code critical list is **Gemini only** |
-| README: "multi-container" docker-compose | **Single service** only (`inayat-app`) |
-| README versions: Streamlit `^1.43.0`, Mem0 `^0.1.0`, LlamaIndex `^0.12.0` | constraints: Streamlit **1.58.0**, mem0ai **2.0.4**, llama-index-core **0.14.22** |
-| README tree omits | `requirements.txt`, `constraints.txt`, `.env.example`, `frontend/`, `api.py`, `run_spa.py`, `demo_script.md` |
+| Claim (source)                                                              | Reality                                                                                                      |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| README badge: "19/19 passed"                                                | Smoke suite has **21** tests                                                                                 |
+| README L130–131: smoke **19**, backend **10**                               | Smoke **21**; backend **10** is correct                                                                      |
+| MASTER: "17-test suite" / “Present 17-test suite”; “lacks mocked LLM”       | Smoke has **21**, including **mocked RAG**                                                                   |
+| README badge: Python **3.14**                                               | CI uses **3.11**, Docker uses **3.12**                                                                       |
+| MASTER: Python **3.14.3** venv                                              | Not aligned with CI/Docker                                                                                   |
+| CONTEXT: Python **3.11**                                                    | Matches CI only                                                                                              |
+| README: Gemini **1.5 Flash** / `gemini-1.5-flash`                           | Code: `_MODEL_NAME = "gemini-flash-lite-latest"` (`core/llm_setup.py`)                                       |
+| `llm_setup.py` docstring still says 1.5 Flash                               | Code uses `gemini-flash-lite-latest`                                                                         |
+| `graph_store.py` mock uses `"gemini-3.1-flash-lite"`                        | Third model string                                                                                           |
+| README: sample PDFs in `data/documents/`                                    | Only `.gitkeep` — **no seed docs in repo**                                                                   |
+| README: `assets/logo.png`                                                   | **`assets/` directory missing** (`app.py` still references it)                                               |
+| README: `inayat_project_deep_dive.pdf`, `inayat_technical_architecture.pdf` | Present at **repo root**, not necessarily where README tree claims                                           |
+| README: `LICENSE` / MIT badge                                               | **LICENSE file absent**                                                                                      |
+| CONTEXT: Safety dependency audit in CI                                      | **Not present** in `ci.yml`                                                                                  |
+| CONTEXT: push to **`main` only**                                            | CI watches **`main` and `master`**                                                                           |
+| CONTEXT file map lists only `tests/smoke_test.py`                           | Omits `backend_feature_test.py`                                                                              |
+| CONTEXT: `HealthStatus` class                                               | Health module is `HealthMonitor`                                                                             |
+| CONTEXT: **PyVis** graph tab                                                | README: **Vis.js**; MASTER: **graph visual omitted**                                                         |
+| MASTER: no in-app upload                                                    | README: isolated ingest + ingest PDF in demo; repo has `frontend/` + `api.py` upload                         |
+| MASTER: startup blocks if **all** critical keys missing                     | Code critical list is **Gemini only**                                                                        |
+| README: "multi-container" docker-compose                                    | **Single service** only (`inayat-app`)                                                                       |
+| README versions: Streamlit `^1.43.0`, Mem0 `^0.1.0`, LlamaIndex `^0.12.0`   | constraints: Streamlit **1.58.0**, mem0ai **2.0.4**, llama-index-core **0.14.22**                            |
+| README tree omits                                                           | `requirements.txt`, `constraints.txt`, `.env.example`, `frontend/`, `api.py`, `run_spa.py`, `demo_script.md` |
 
 #### CI pipeline (actual `.github/workflows/ci.yml`)
 
@@ -275,6 +284,7 @@ Backend integration (`tests/backend_feature_test.py`) — 10 methods:
 ### 7. Dependency & Environment Posture
 
 **Required env vars** (`.env.example`):
+
 - `GEMINI_API_KEY` — **critical** (startup blocks without it)
 - `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` — recommended
 
@@ -290,34 +300,37 @@ Backend integration (`tests/backend_feature_test.py`) — 10 methods:
 
 ### 8. What Is Genuinely Implemented (Not Placeholder)
 
-| Feature | Status | Evidence |
-|---------|--------|----------|
-| PropertyGraphIndex RAG | **Real** | `core/agent.py` `build_index()` + `query()` |
-| Neo4j graph store | **Real** | `Neo4jPropertyGraphStore`, Cypher vis query |
-| Mem0 long-term memory | **Real** | `MemoryClient` add/get/clear |
-| Circuit breaker degradation | **Real** | Demo toggles + live fallback |
-| Graph visualization | **Real** | vis-network payload from Neo4j chunks |
-| React SPA | **Real** | `frontend/src/` with AgentWorkspace, upload, graph drawer |
-| FastAPI REST layer | **Real** | 8+ endpoints in `api.py` |
-| Docker packaging | **Real** | `Dockerfile` + `docker-compose.yml` |
-| PDF deep-dive docs | **Real** | `inayat_project_deep_dive.pdf`, `inayat_technical_architecture.pdf` in repo root |
+| Feature                     | Status   | Evidence                                                                         |
+| --------------------------- | -------- | -------------------------------------------------------------------------------- |
+| PropertyGraphIndex RAG      | **Real** | `core/agent.py` `build_index()` + `query()`                                      |
+| Neo4j graph store           | **Real** | `Neo4jPropertyGraphStore`, Cypher vis query                                      |
+| Mem0 long-term memory       | **Real** | `MemoryClient` add/get/clear                                                     |
+| Circuit breaker degradation | **Real** | Demo toggles + live fallback                                                     |
+| Graph visualization         | **Real** | vis-network payload from Neo4j chunks                                            |
+| React SPA                   | **Real** | `frontend/src/` with AgentWorkspace, upload, graph drawer                        |
+| FastAPI REST layer          | **Real** | 8+ endpoints in `api.py`                                                         |
+| Docker packaging            | **Real** | `Dockerfile` + `docker-compose.yml`                                              |
+| PDF deep-dive docs          | **Real** | `inayat_project_deep_dive.pdf`, `inayat_technical_architecture.pdf` in repo root |
 
 ---
 
 ### 9. Production Readiness Gaps (Prioritized)
 
 #### P0 — Trust & consistency
+
 1. **Single source of truth doc** — reconcile README, CONTEXT, MASTER into one `STATUS.md`
 2. **Fix test count badges** — 21 smoke + 10 integration = 31 total
 3. **Align Python version** — pick 3.12 (Docker) or 3.11 (CI), update all references
 4. **Add seed documents** or document that RAG demo requires manual upload
 
 #### P1 — CI hardening
+
 5. Run `backend_feature_test.py` on a scheduled workflow (not every PR — needs secrets + cost)
 6. Install with `-c constraints.txt` in CI (matches Docker)
 7. Add frontend `npm run build` step to catch SPA breakage
 
 #### P2 — Architecture hardening
+
 8. Add `user_id` sanitization (alphanumeric + slug only)
 9. Make chunk_size/overlap/top_k **env-configurable**
 10. Wire `search_memories()` into the query path (semantic memory retrieval, not just `get_all`)
@@ -325,6 +338,7 @@ Backend integration (`tests/backend_feature_test.py`) — 10 methods:
 12. Per-user Neo4j subgraph isolation or database-per-tenant for real multi-tenancy
 
 #### P3 — Deployment convergence
+
 13. Pick **one** default UI (recommend React + FastAPI)
 14. Update Docker `CMD` to `uvicorn api:app` + serve `frontend/dist/`
 15. Add auth layer (even basic API key per user)
@@ -377,32 +391,33 @@ INAYAT/
 
 ### `core/` module responsibilities
 
-| File | Role |
-|------|------|
-| `__init__.py` | Package docstring listing submodules. No exports. |
-| `startup.py` | Boot: `load_env()`, `setup_logging()`, `validate_env()`, `HealthMonitor.run_all()`, `atexit.register(close_driver)`. Critical: `GEMINI_API_KEY`. Recommended: Mem0 + Neo4j vars. |
-| `logging_config.py` | Logger `"inayat"`: stdout + rotating `inayat_debug.log` (3×5 MB). Idempotent handlers (Streamlit reruns). |
-| `llm_setup.py` | Gemini LLM + embeddings; LlamaIndex global `Settings`. Models: `_MODEL_NAME = "gemini-flash-lite-latest"`, `_EMBED_MODEL = "gemini-embedding-001"`. `ResilientGoogleGenAIEmbedding` / `ResilientGoogleGenAI` retry **6 times**. `Settings.chunk_size = 512`, `Settings.chunk_overlap = 64`. |
-| `agent.py` | Document load, `PropertyGraphIndex` build/cache, `query()` RAG + LLM fallback. `_indices` dict + `_indices_lock`. Empty folder → `PropertyGraphIndex.from_existing(...)`. |
-| `memory.py` | Mem0 `MemoryClient` CRUD keyed by `user_id`. Circuit breaker threshold 3 / recovery 60s. `search_memories` unused by app/api. |
-| `graph_store.py` | Neo4j driver, Cypher, `Neo4jPropertyGraphStore`, vis-network payload. Session `database=NEO4J_USERNAME` (usually `"neo4j"`), **not** app `user_id`. Empty vis → mock architecture graph (`is_mock: True`). |
-| `resilience.py` | `CircuitBreaker`, `@resilient_call` (tenacity), `safe_execute`. HALF_OPEN allows **one** probe. |
-| `health.py` | `HealthMonitor` probes Gemini / Mem0 / Neo4j. `all_critical_up()`: **only Gemini** must be UP. |
+| File                | Role                                                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py`       | Package docstring listing submodules. No exports.                                                                                                                                                                                                                                           |
+| `startup.py`        | Boot: `load_env()`, `setup_logging()`, `validate_env()`, `HealthMonitor.run_all()`, `atexit.register(close_driver)`. Critical: `GEMINI_API_KEY`. Recommended: Mem0 + Neo4j vars.                                                                                                            |
+| `logging_config.py` | Logger `"inayat"`: stdout + rotating `inayat_debug.log` (3×5 MB). Idempotent handlers (Streamlit reruns).                                                                                                                                                                                   |
+| `llm_setup.py`      | Gemini LLM + embeddings; LlamaIndex global `Settings`. Models: `_MODEL_NAME = "gemini-flash-lite-latest"`, `_EMBED_MODEL = "gemini-embedding-001"`. `ResilientGoogleGenAIEmbedding` / `ResilientGoogleGenAI` retry **6 times**. `Settings.chunk_size = 512`, `Settings.chunk_overlap = 64`. |
+| `agent.py`          | Document load, `PropertyGraphIndex` build/cache, `query()` RAG + LLM fallback. `_indices` dict + `_indices_lock`. Empty folder → `PropertyGraphIndex.from_existing(...)`.                                                                                                                   |
+| `memory.py`         | Mem0 `MemoryClient` CRUD keyed by `user_id`. Circuit breaker threshold 3 / recovery 60s. `search_memories` unused by app/api.                                                                                                                                                               |
+| `graph_store.py`    | Neo4j driver, Cypher, `Neo4jPropertyGraphStore`, vis-network payload. Session `database=NEO4J_USERNAME` (usually `"neo4j"`), **not** app `user_id`. Empty vis → mock architecture graph (`is_mock: True`).                                                                                  |
+| `resilience.py`     | `CircuitBreaker`, `@resilient_call` (tenacity), `safe_execute`. HALF_OPEN allows **one** probe.                                                                                                                                                                                             |
+| `health.py`         | `HealthMonitor` probes Gemini / Mem0 / Neo4j. `all_critical_up()`: **only Gemini** must be UP.                                                                                                                                                                                              |
 
 ### Entry-point differences
 
-| | `app.py` | `api.py` | `run_spa.py` |
-|---|---|---|---|
-| **What** | Streamlit full UI | FastAPI backend + optional React `frontend/dist` | Dev process manager |
-| **Launch** | `streamlit run app.py` | `uvicorn api:app --port 8000` | `python run_spa.py` |
-| **Docker** | **Yes** | No | No |
-| **Startup** | Full `run_startup()` (health + atexit Neo4j close) | Env validate only; health stays `"⚪ Unknown"` until `/api/health` | Spawns both servers |
-| **Chat** | `st.session_state.messages`; last user msg triggers agent | `POST /api/query` | N/A |
-| **Ingest** | Sidebar `file_uploader` → disk → `build_index` | `POST /api/upload` | N/A |
-| **Graph** | Inline vis-network HTML iframe | `GET /api/graph` | N/A |
-| **Breakers** | Checkboxes set `mem._cb.forced_open` / `gs._cb.forced_open` | `POST /api/health/toggle` | N/A |
+|              | `app.py`                                                    | `api.py`                                                           | `run_spa.py`        |
+| ------------ | ----------------------------------------------------------- | ------------------------------------------------------------------ | ------------------- |
+| **What**     | Streamlit full UI                                           | FastAPI backend + optional React `frontend/dist`                   | Dev process manager |
+| **Launch**   | `streamlit run app.py`                                      | `uvicorn api:app --port 8000`                                      | `python run_spa.py` |
+| **Docker**   | **Yes**                                                     | No                                                                 | No                  |
+| **Startup**  | Full `run_startup()` (health + atexit Neo4j close)          | Env validate only; health stays `"⚪ Unknown"` until `/api/health` | Spawns both servers |
+| **Chat**     | `st.session_state.messages`; last user msg triggers agent   | `POST /api/query`                                                  | N/A                 |
+| **Ingest**   | Sidebar `file_uploader` → disk → `build_index`              | `POST /api/upload`                                                 | N/A                 |
+| **Graph**    | Inline vis-network HTML iframe                              | `GET /api/graph`                                                   | N/A                 |
+| **Breakers** | Checkboxes set `mem._cb.forced_open` / `gs._cb.forced_open` | `POST /api/health/toggle`                                          | N/A                 |
 
 **`api.py` routes**
+
 - `GET /api/startup` — `{ok, health, warnings}`
 - `GET /api/health` — live `HealthMonitor.run_all()` + breaker flags
 - `POST /api/health/toggle` — `{service: mem0|neo4j, forced}`
@@ -435,22 +450,25 @@ Embeddings are **not** a local FAISS/Chroma index; they live in the Neo4j proper
 Not a planner/tool-calling loop. One function, two attempts.
 
 **Streamlit after a user message:**
+
 1. `add_memory(user_id, prompt)` — raw utterance to Mem0
 2. `_fetch_memories` (Streamlit cache TTL 30s) → bullet list `memory_ctx`
 3. `agent_query(prompt, user_id, memory_context=memory_ctx)`
 4. Append assistant message; trim history to last **20**
 
 **FastAPI `api_query_agent`:**
+
 1. `add_memory(user_id, question)`
 2. `get_memories` → `memory_ctx`
-3–4. `agent_query(...)` (RAG then LLM)
-5. Return `{answer, memory_context, memories}`
+   3–4. `agent_query(...)` (RAG then LLM)
+3. Return `{answer, memory_context, memories}`
 
 No tool registry, no sub-agents, no conversation history sent to the LLM (only Mem0 facts + current question). Chat transcript is UI-only.
 
 ### Memory system
 
 **Mem0 (long-term)**
+
 - Cloud `MemoryClient`; all ops scoped with `user_id`
 - **Write:** every chat turn stores the **full user message**, not a separate fact extractor
 - **Read:** `get_all` for pills/context; `search_memories` exists but **unused** by app/api
@@ -459,10 +477,10 @@ No tool registry, no sub-agents, no conversation history sent to the LLM (only M
 
 **Conversation state (short-term)**
 
-| UI | Storage | Isolation key |
-|----|---------|----------------|
-| Streamlit | `st.session_state.messages` + `messages_{name}` on profile switch; `?user=` query param | browser session |
-| React | `localStorage["messages_${userId}"]` | browser origin + userId |
+| UI        | Storage                                                                                 | Isolation key           |
+| --------- | --------------------------------------------------------------------------------------- | ----------------------- |
+| Streamlit | `st.session_state.messages` + `messages_{name}` on profile switch; `?user=` query param | browser session         |
+| React     | `localStorage["messages_${userId}"]`                                                    | browser origin + userId |
 
 Neither backend persists chat history. `QueryRequest.memory_context` is unused on the server; SPA still sends it, then overwrites from Mem0.
 
@@ -503,11 +521,11 @@ Neither backend persists chat history. `QueryRequest.memory_context` is unused o
 
 ### Data status correction (Copilot vs inspection)
 
-| Source | Claim |
-|--------|--------|
-| Copilot | `data/documents/` already contains sample scenario PDFs |
-| Inspection | Only `data/documents/.gitkeep` |
-| MASTER | Place 3–5 PDFs there |
+| Source                    | Claim                                                                       |
+| ------------------------- | --------------------------------------------------------------------------- |
+| Copilot                   | `data/documents/` already contains sample scenario PDFs                     |
+| Inspection                | Only `data/documents/.gitkeep`                                              |
+| MASTER                    | Place 3–5 PDFs there                                                        |
 | `backend_feature_test.py` | Assumes an indexed scenario PDF (CEO of INAYAT) that is **not** in the repo |
 
 **This is a factual disagreement that must be fixed in docs and/or by adding seed files.**
@@ -530,6 +548,7 @@ Neither backend persists chat history. `QueryRequest.memory_context` is unused o
 Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 
 ### Documentation & truth
+
 1. Reconcile README, CONTEXT, MASTER into one trustworthy status
 2. Fix test-count badges (19 vs 17 vs 21 vs 31)
 3. Fix Python version claims (3.14 vs 3.11 vs 3.12)
@@ -546,6 +565,7 @@ Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 14. Document that “agentic” is a single-agent RAG pipeline, not multi-agent orchestration
 
 ### Testing & CI
+
 15. CI does not run `backend_feature_test.py`
 16. CI does not use `-c constraints.txt`
 17. CI Python 3.11 vs Docker 3.12
@@ -555,12 +575,14 @@ Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 21. Live RAG test depends on missing seed PDF
 
 ### Config & typing
+
 22. No Pydantic Settings; raw `os.getenv`
 23. No Pydantic models in `core/` (only FastAPI layer)
 24. Chunk size / overlap / top_k hardcoded
 25. `QueryRequest.memory_context` ignored by server
 
 ### RAG / memory / agent
+
 26. No MMR
 27. No hybrid BM25 + vector
 28. `search_memories()` unused on hot path
@@ -572,6 +594,7 @@ Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 34. Heuristic `isRag` / `isMemory` badges are client-side, not backend flags
 
 ### Isolation & security
+
 35. No auth; display name = identity
 36. No `user_id` sanitization (path traversal)
 37. Shared Neo4j database; 1–2 hop vis may leak related nodes
@@ -582,12 +605,14 @@ Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 42. Streamlit warmup indexes `"default"` user
 
 ### Deployment
+
 43. Dual UI not converged; Docker still Streamlit-only
 44. docker-compose is single-container, not multi-container
 45. Docker healthcheck is Streamlit-only (`/_stcore/health`)
 46. No FastAPI/uvicorn path in Docker CMD
 
 ### Observability
+
 47. No structured token usage / latency metrics on query path
 48. Logging exists (`inayat_debug.log`) but no request-id / user-id correlation standard
 
@@ -596,6 +621,7 @@ Use this as the checklist. How to fix each item is in `HOW_TO_FIX.md`.
 ## E. What is already good (do not “fix” by deleting)
 
 Keep and extend; do not rip out:
+
 - `core/` modular split (agent, memory, graph, health, resilience, startup, logging)
 - Dual-surface coexistence until a migration path exists
 - PropertyGraphIndex + Neo4j + Gemini + Mem0 real integration

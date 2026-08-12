@@ -55,13 +55,13 @@
 
 ## Entry points
 
-| File           | Role                           |
-| -------------- | ------------------------------ |
-| `app.py`       | Streamlit UI (`--profile streamlit`) |
+| File           | Role                                                    |
+| -------------- | ------------------------------------------------------- |
+| `app.py`       | Streamlit UI (`--profile streamlit`)                    |
 | `api.py`       | FastAPI REST + `frontend/dist` (Docker default `:8000`) |
-| `run_spa.py`   | Local dual-server dev          |
-| `warmup.py`    | Neo4j keepalive + health       |
-| `activate.ps1` | Windows launcher               |
+| `run_spa.py`   | Local dual-server dev                                   |
+| `warmup.py`    | Neo4j keepalive + health                                |
+| `activate.ps1` | Windows launcher                                        |
 
 ---
 
