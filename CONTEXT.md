@@ -37,7 +37,7 @@
 | ------------------- | ------------------------------------------------- |
 | `settings.py`       | Typed env (`InayatSettings`)                      |
 | `identity.py`       | `UserId.parse()` sanitization                     |
-| `observability.py`  | `trace_span()` logging                            |
+| `observability.py`  | `request_id`, `log_query_event()`, `trace_span()` |
 | `schemas.py`        | `QueryInput`, `QueryResult`                       |
 | `conversation.py`   | In-memory short-term turns                        |
 | `ingest.py`         | `save_uploads()`, `build_index()`, async jobs     |
@@ -69,7 +69,7 @@
 
 | File                            | Count | CI             |
 | ------------------------------- | ----- | -------------- |
-| `tests/smoke_test.py`           | 46    | Yes            |
+| `tests/smoke_test.py`           | 52    | Yes            |
 | `tests/backend_feature_test.py` | 10    | No (live keys) |
 
 Run smoke: `python tests/smoke_test.py`
@@ -84,7 +84,7 @@ On push/PR to `main` or `master` ([ci.yml](.github/workflows/ci.yml)):
 2. black --check
 3. gitleaks
 4. pip-audit (`pip install pip-audit` then `pip-audit -r requirements.txt`)
-5. `python tests/smoke_test.py` (46 tests)
+5. `python tests/smoke_test.py` (52 tests)
 
 Parallel job **frontend-build**: `npm ci` + `npm run build` in `frontend/`.
 
@@ -96,13 +96,13 @@ Python 3.12. Installs with `-c constraints.txt`. No pytest. No Safety package.
 
 ## Environment
 
-| Variable                      | Required                         |
-| ----------------------------- | -------------------------------- |
-| `GEMINI_API_KEY`              | **Yes**                          |
-| `MEM0_API_KEY`                | Recommended                      |
-| `NEO4J_URI`, `NEO4J_PASSWORD` | Recommended                      |
-| `NEO4J_USERNAME`              | Default `neo4j`                  |
-| `INAYAT_DEMO_MODE`            | For circuit-breaker demo toggles |
+| Variable                      | Required                                                  |
+| ----------------------------- | --------------------------------------------------------- |
+| `GEMINI_API_KEY`              | **Yes**                                                   |
+| `MEM0_API_KEY`                | Recommended                                               |
+| `NEO4J_URI`, `NEO4J_PASSWORD` | Recommended                                               |
+| `NEO4J_USERNAME`              | Default `neo4j`                                           |
+| `INAYAT_DEMO_MODE`            | For circuit-breaker demo toggles                          |
 | `INAYAT_API_KEY`              | Optional; if set, mutating API routes need `X-INAYAT-KEY` |
 
 Shared Neo4j database + `user_id` metadata (not per-user Aura DBs).

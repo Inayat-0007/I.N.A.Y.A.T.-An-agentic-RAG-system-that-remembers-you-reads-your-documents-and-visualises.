@@ -129,6 +129,7 @@ class TestIdentity(unittest.TestCase):
     def test_parse_valid_user_id(self) -> None:
         from core.identity import UserId
 
+        self.assertEqual(UserId.parse("Alice").value, "Alice")
         self.assertEqual(UserId.parse("Moham").value, "Moham")
         self.assertEqual(UserId.parse("default").value, "default")
 
@@ -448,11 +449,40 @@ class TestAgentPipeline(unittest.TestCase):
         mock_index.as_query_engine.return_value = mock_engine
         mock_get_index.return_value = mock_index
 
-        from core.agent import query
+        from core.agent import query, query_detailed
+        from core.schemas import QueryInput
 
-        ans = query("What is AI?", memory_context="")
-        self.assertEqual(ans, "Mocked RAG response about AI.")
+        result = query_detailed(QueryInput.from_raw("What is AI?"))
+        self.assertEqual(result.route, "rag")
+        self.assertGreater(result.source_count, 0)
+        self.assertEqual(result.answer, "Mocked RAG response about AI.")
         mock_engine.query.assert_called_once()
+
+    @patch("core.agent.configure_llama_settings")
+    @patch("core.agent.get_index")
+    @patch("core.agent.get_gemini_llm")
+    def test_query_detailed_empty_sources_routes_llm(
+        self, mock_get_llm, mock_get_index, _mock_configure
+    ) -> None:
+        mock_index = MagicMock()
+        mock_engine = MagicMock()
+        mock_response = MagicMock()
+        mock_response.source_nodes = []
+        mock_response.__str__.return_value = "No information found."
+        mock_engine.query.return_value = mock_response
+        mock_index.as_query_engine.return_value = mock_engine
+        mock_get_index.return_value = mock_index
+
+        mock_llm = MagicMock()
+        mock_llm.complete.return_value = "LLM answer."
+        mock_get_llm.return_value = mock_llm
+
+        from core.agent import query_detailed
+        from core.schemas import QueryInput
+
+        result = query_detailed(QueryInput.from_raw("What is AI?"))
+        self.assertEqual(result.route, "llm")
+        mock_llm.complete.assert_called_once()
 
     @patch("core.agent.configure_llama_settings")
     @patch("core.agent.get_index")
@@ -498,6 +528,32 @@ class TestAgentPipeline(unittest.TestCase):
         self.assertEqual(result.route, "rag")
         self.assertGreater(result.source_count, 0)
         mock_get_llm.assert_not_called()
+
+
+class TestObservability(unittest.TestCase):
+    """HOW_TO_FIX §7 — structured query logging."""
+
+    def test_log_query_event_format(self) -> None:
+        from core.observability import log_query_event, set_request_id
+
+        set_request_id("test-rid-123")
+        with self.assertLogs("inayat", level="INFO") as captured:
+            log_query_event(
+                user_id="alice",
+                route="rag",
+                latency_ms=12.5,
+                source_count=2,
+                mem0_ok=True,
+                neo4j_ok=False,
+                rag_ms=8.0,
+            )
+        line = captured.output[-1]
+        self.assertIn("event=query", line)
+        self.assertIn("user_id=alice", line)
+        self.assertIn("route=rag", line)
+        self.assertIn("mem0_ok=true", line)
+        self.assertIn("neo4j_ok=false", line)
+        self.assertNotIn("GEMINI", line)
 
 
 class TestMemoryContext(unittest.TestCase):
@@ -581,8 +637,15 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestBackwardsCompatibility))
     suite.addTests(loader.loadTestsFromTestCase(TestFailureDesign))
     suite.addTests(loader.loadTestsFromTestCase(TestAgentPipeline))
+    suite.addTests(loader.loadTestsFromTestCase(TestObservability))
     suite.addTests(loader.loadTestsFromTestCase(TestMemoryContext))
     suite.addTests(loader.loadTestsFromTestCase(TestIngestIsolation))
+    _tests_dir = os.path.dirname(os.path.abspath(__file__))
+    if _tests_dir not in sys.path:
+        sys.path.insert(0, _tests_dir)
+    from test_api_contract import TestApiContract
+
+    suite.addTests(loader.loadTestsFromTestCase(TestApiContract))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

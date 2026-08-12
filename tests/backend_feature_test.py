@@ -28,6 +28,24 @@ _SAMPLES_DIR = _PROJECT_ROOT / "data" / "documents" / "_samples"
 _RAG_USER_ID = "integration_rag"
 
 
+def _documents_available_for_rag() -> bool:
+    """True when sample PDFs exist or any user folder has indexable files."""
+    if _SAMPLES_DIR.is_dir() and any(_SAMPLES_DIR.glob("*.pdf")):
+        return True
+    docs_root = _PROJECT_ROOT / "data" / "documents"
+    if not docs_root.is_dir():
+        return False
+    for child in docs_root.iterdir():
+        if not child.is_dir() or child.name.startswith(("_", ".")):
+            continue
+        if any(
+            f.is_file() and not f.name.startswith(".")
+            for f in child.iterdir()
+        ):
+            return True
+    return False
+
+
 class TestBackendStartup(unittest.TestCase):
     """Verify startup initialization and configuration loading."""
 
@@ -164,6 +182,11 @@ class TestBackendAgentRAG(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        if not _documents_available_for_rag():
+            raise unittest.SkipTest(
+                "No indexable documents in data/documents/ — copy _samples/ first."
+            )
+
         if not _SAMPLES_DIR.is_dir():
             raise unittest.SkipTest("Sample docs missing: data/documents/_samples/")
 

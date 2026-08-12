@@ -1177,8 +1177,10 @@ def main() -> None:
         # Query agent
         from core.agent import query_detailed
         from core.conversation import append_turn
+        from core.observability import new_request_id, set_request_id
         from core.schemas import QueryInput
 
+        set_request_id(new_request_id())
         result = query_detailed(
             QueryInput.from_raw(
                 question=user_prompt,

@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python Version">
-  <img src="https://img.shields.io/badge/Tests-46%20smoke%20%2F%2010%20live-success" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-52%20smoke%20%2F%2010%20live-success" alt="Tests">
   <img src="https://img.shields.io/badge/CI-smoke%20%2B%20frontend-informational" alt="CI Scope">
   <img src="https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
@@ -21,23 +21,23 @@
 
 ## Canonical status (source of truth)
 
-| Fact                | Value                                                                        |
-| ------------------- | ---------------------------------------------------------------------------- |
-| **Maturity**        | Advanced MVP / demo-ready; not hardened production                           |
-| **Agent model**     | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent)                 |
-| **Python**          | 3.12                                                                         |
-| **LLM**             | `gemini-flash-lite-latest`                                                   |
-| **Embeddings**      | `gemini-embedding-001` (3072-dim)                                            |
-| **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)      |
-| **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter          |
-| **Tests**           | 46 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`) |
-| **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                 |
-| **Docker**          | Default SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501` |
-| **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`    |
-| **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)               |
+| Fact                | Value                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| **Maturity**        | Advanced MVP / demo-ready; not hardened production                                       |
+| **Agent model**     | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent)                             |
+| **Python**          | 3.12                                                                                     |
+| **LLM**             | `gemini-flash-lite-latest`                                                               |
+| **Embeddings**      | `gemini-embedding-001` (3072-dim)                                                        |
+| **Chunking**        | size 512, overlap 64 (env: `INAYAT_CHUNK_SIZE`, `INAYAT_CHUNK_OVERLAP`)                  |
+| **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter                      |
+| **Tests**           | 52 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`)             |
+| **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + smoke tests only                             |
+| **Docker**          | Default SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501`          |
+| **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`                |
+| **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)                           |
 | **Isolation**       | Soft: folder + metadata + Mem0 `user_id`; **shared Neo4j DB**; optional `INAYAT_API_KEY` |
-| **Critical env**    | `GEMINI_API_KEY`                                                             |
-| **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`              |
+| **Critical env**    | `GEMINI_API_KEY`                                                                         |
+| **Recommended env** | `MEM0_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`                          |
 
 See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 
@@ -136,7 +136,7 @@ INAYAT/
 │       ├── .gitkeep              # Per-user uploads at runtime
 │       └── _samples/             # MIT sample PDFs (copy to {your_name}/)
 ├── tests/
-│   ├── smoke_test.py             # 46 tests (CI)
+│   ├── smoke_test.py             # 52 tests (CI)
 │   └── backend_feature_test.py   # 10 live integration tests
 ├── .github/workflows/ci.yml
 ├── Dockerfile                    # Streamlit :8501
@@ -203,7 +203,7 @@ Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required).
 ## 🧪 Testing Suite
 
 ```bash
-# CI smoke suite (46 tests)
+# CI smoke suite (52 tests)
 python tests/smoke_test.py
 
 # Live integration (10 tests — requires real API keys)
@@ -222,7 +222,7 @@ On push/PR to `main` or `master` (see [.github/workflows/ci.yml](.github/workflo
 2. **black** — formatting check
 3. **gitleaks** — secret scan
 4. **pip-audit** — dependency vulnerability scan
-5. **smoke tests** — `python tests/smoke_test.py` (46 tests)
+5. **smoke tests** — `python tests/smoke_test.py` (52 tests)
 
 **frontend-build** job (parallel): `npm ci` + `npm run build` in `frontend/`.
 

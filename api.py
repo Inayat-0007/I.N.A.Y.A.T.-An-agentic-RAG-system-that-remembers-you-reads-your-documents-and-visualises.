@@ -32,7 +32,7 @@ from core.ingest import (
     schedule_index_build,
 )
 from core.memory import add_memory, build_memory_context, clear_memories, get_memories
-from core.observability import set_request_id
+from core.observability import new_request_id, set_request_id
 from core.schemas import QueryInput, QueryResult
 from core.settings import get_settings
 from core.startup import load_env, run_startup, validate_env
@@ -94,6 +94,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Bind a UUID request id for every API call."""
+    rid = request.headers.get("X-Request-ID") or new_request_id()
+    set_request_id(rid)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
 
 
 @app.middleware("http")
@@ -230,7 +240,6 @@ def api_get_graph(user_id: str):
 def api_query_agent(req: QueryRequest = Body(...)):
     _require_boot_ok()
     user = _parse_user_id(req.user_id)
-    set_request_id(f"api-query-{user.value}")
 
     add_memory(user.value, req.question, kind="utterance")
     memory_ctx, mem_lines = build_memory_context(user.value, req.question)

@@ -12,7 +12,7 @@ from typing import Optional
 
 from core.ingest import get_index
 from core.llm_setup import configure_llama_settings, get_gemini_llm
-from core.observability import trace_span
+from core.observability import log_query_event, service_breaker_status, trace_span
 from core.resilience import safe_execute
 from core.schemas import QueryInput, QueryResult
 from core.settings import get_settings
@@ -77,6 +77,27 @@ def _augment_prompt(question: str, memory_context: str) -> str:
     return question
 
 
+def _finalize_result(
+    result: QueryResult,
+    user_id: str,
+    *,
+    rag_ms: float | None = None,
+    llm_ms: float | None = None,
+) -> QueryResult:
+    mem0_ok, neo4j_ok = service_breaker_status()
+    log_query_event(
+        user_id=user_id,
+        route=result.route,
+        latency_ms=result.latency_ms,
+        source_count=result.source_count,
+        mem0_ok=mem0_ok,
+        neo4j_ok=neo4j_ok,
+        rag_ms=rag_ms,
+        llm_ms=llm_ms,
+    )
+    return result
+
+
 def query_detailed(inp: QueryInput) -> QueryResult:
     """Answer a user question via RAG with structured result metadata.
 
@@ -96,6 +117,8 @@ def query_detailed(inp: QueryInput) -> QueryResult:
     started = time.perf_counter()
     augmented = _augment_prompt(inp.question, inp.memory_context)
     used_memory = bool(inp.memory_context.strip())
+    rag_ms: float | None = None
+    llm_ms: float | None = None
 
     with trace_span("agent.query", user_id=user.value):
         configure_llama_settings(settings)
@@ -124,15 +147,21 @@ def query_detailed(inp: QueryInput) -> QueryResult:
 
                 return res_str, source_count
 
+            rag_started = time.perf_counter()
             rag_out = safe_execute(_rag_query, fallback=None)
+            rag_ms = round((time.perf_counter() - rag_started) * 1000, 2)
             if rag_out is not None:
                 answer, source_count = rag_out
-                return QueryResult(
-                    answer=answer,
-                    route="rag",
-                    source_count=source_count,
-                    used_memory=used_memory,
-                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                return _finalize_result(
+                    QueryResult(
+                        answer=answer,
+                        route="rag",
+                        source_count=source_count,
+                        used_memory=used_memory,
+                        latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                    ),
+                    user.value,
+                    rag_ms=rag_ms,
                 )
 
         logger.warning("RAG unavailable — falling back to pure Gemini chat.")
@@ -142,22 +171,34 @@ def query_detailed(inp: QueryInput) -> QueryResult:
             resp = llm.complete(augmented)
             return str(resp)
 
+        llm_started = time.perf_counter()
         fallback_answer = safe_execute(_llm_fallback, fallback=None)
+        llm_ms = round((time.perf_counter() - llm_started) * 1000, 2)
         if fallback_answer is not None:
-            return QueryResult(
-                answer=fallback_answer,
-                route="llm",
+            return _finalize_result(
+                QueryResult(
+                    answer=fallback_answer,
+                    route="llm",
+                    source_count=0,
+                    used_memory=used_memory,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                ),
+                user.value,
+                rag_ms=rag_ms,
+                llm_ms=llm_ms,
+            )
+
+        return _finalize_result(
+            QueryResult(
+                answer=_APOLOGY,
+                route="apology",
                 source_count=0,
                 used_memory=used_memory,
                 latency_ms=round((time.perf_counter() - started) * 1000, 2),
-            )
-
-        return QueryResult(
-            answer=_APOLOGY,
-            route="apology",
-            source_count=0,
-            used_memory=used_memory,
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            ),
+            user.value,
+            rag_ms=rag_ms,
+            llm_ms=llm_ms,
         )
 
 
