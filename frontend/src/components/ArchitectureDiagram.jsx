@@ -59,7 +59,7 @@ export default function ArchitectureDiagram() {
       id: 1,
       title: "1. User Profiling",
       role: "User Session Isolation",
-      desc: "Authenticates name query parameters (?user=Rahul) to lock document files, chats, and indexes in isolated sandboxes.",
+      desc: "Validates workspace ids (?user=Moham_Khan). Letters, digits, '.', '_' or '-' — spaces are rejected. Documents, chats, and indexes stay in that folder.",
       x: 100,
       y: 120,
     },
@@ -164,7 +164,7 @@ export default function ArchitectureDiagram() {
           <div className="mt-6 border-t border-cyber-border/40 pt-4 flex justify-between items-center text-[10px] font-heading uppercase text-cyber-muted">
             <span>Core Pipeline Status</span>
             <span className="flex items-center gap-1 text-green-400 font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5" /> 19 Smoke Tests Passing
+              <CheckCircle2 className="w-3.5 h-3.5" /> 59 Smoke Tests (CI)
             </span>
           </div>
         </div>

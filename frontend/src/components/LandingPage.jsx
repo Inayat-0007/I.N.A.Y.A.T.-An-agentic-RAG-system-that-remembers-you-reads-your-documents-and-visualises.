@@ -7,6 +7,7 @@ import {
   Layers,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { validateUserId } from "../userId";
 
 export default function LandingPage({ onEnterWorkspace }) {
   const canvasRef = useRef(null);
@@ -122,11 +123,12 @@ export default function LandingPage({ onEnterWorkspace }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (nameInput.trim()) {
-      onEnterWorkspace(nameInput.trim());
-    } else {
-      setErrorMsg("Please provide a name to access the agent workspace.");
+    const error = validateUserId(nameInput);
+    if (error) {
+      setErrorMsg(error);
+      return;
     }
+    onEnterWorkspace(nameInput.trim());
   };
 
   return (
@@ -202,7 +204,7 @@ export default function LandingPage({ onEnterWorkspace }) {
             <input
               id="landing-user-input"
               type="text"
-              placeholder="Enter active profile name (e.g. Moham)"
+              placeholder="Workspace id (e.g. Moham_Khan — underscores, not spaces)"
               value={nameInput}
               onChange={(e) => {
                 setNameInput(e.target.value);
@@ -235,7 +237,7 @@ export default function LandingPage({ onEnterWorkspace }) {
         >
           <div className="flex flex-col items-center p-3 rounded-xl bg-white/[0.02] border border-cyber-border/20">
             <span className="font-heading font-extrabold text-2xl text-cyber-cyan text-glow-cyan">
-              52
+              59
             </span>
             <span className="text-xs text-cyber-muted font-subheading mt-1">
               Smoke Tests (CI)

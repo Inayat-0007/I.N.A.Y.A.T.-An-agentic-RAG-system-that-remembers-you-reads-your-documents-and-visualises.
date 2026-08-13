@@ -36,11 +36,11 @@
 | Module              | Responsibility                                    |
 | ------------------- | ------------------------------------------------- |
 | `settings.py`       | Typed env (`InayatSettings`)                      |
-| `identity.py`       | `UserId.parse()` sanitization                     |
+| `identity.py`       | `UserId.parse()` — no spaces; `_` `.` `-` ok      |
 | `observability.py`  | `request_id`, `log_query_event()`, `trace_span()` |
 | `schemas.py`        | `QueryInput`, `QueryResult`                       |
 | `conversation.py`   | In-memory short-term turns                        |
-| `ingest.py`         | `save_uploads()`, `build_index()`, async jobs     |
+| `ingest.py`         | Uploads, pypdf extract, incremental index build   |
 | `agent.py`          | `query_detailed()`, legacy `query()` → str        |
 | `llm_setup.py`      | Gemini LLM + embeddings only                      |
 | `memory.py`         | Mem0 CRUD (no chat history)                       |
@@ -69,7 +69,7 @@
 
 | File                            | Count | CI             |
 | ------------------------------- | ----- | -------------- |
-| `tests/smoke_test.py`           | 52    | Yes            |
+| `tests/smoke_test.py`           | 59    | Yes            |
 | `tests/backend_feature_test.py` | 10    | No (live keys) |
 
 Run smoke: `python tests/smoke_test.py`
@@ -84,7 +84,7 @@ On push/PR to `main` or `master` ([ci.yml](.github/workflows/ci.yml)):
 2. black --check
 3. gitleaks
 4. pip-audit (`pip install pip-audit` then `pip-audit -r requirements.txt`)
-5. `python tests/smoke_test.py` (52 tests)
+5. `python tests/smoke_test.py` (59 tests)
 
 Parallel job **frontend-build**: `npm ci` + `npm run build` in `frontend/`.
 
@@ -105,7 +105,7 @@ Python 3.12. Installs with `-c constraints.txt`. No pytest. No Safety package.
 | `INAYAT_DEMO_MODE`            | For circuit-breaker demo toggles                          |
 | `INAYAT_API_KEY`              | Optional; if set, mutating API routes need `X-INAYAT-KEY` |
 
-Shared Neo4j database + `user_id` metadata (not per-user Aura DBs).
+Shared Neo4j database + `user_id` metadata (not per-user Aura DBs). Workspace ids: letters, digits, `.` `_` `-` — **underscores, not spaces**.
 
 See `.env.example` for `INAYAT_*` tuning keys.
 

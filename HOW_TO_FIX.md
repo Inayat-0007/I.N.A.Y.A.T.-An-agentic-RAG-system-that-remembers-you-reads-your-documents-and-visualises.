@@ -2,7 +2,7 @@
 
 > **Remediation spec (not runtime truth):** Instructions below reference outdated values only where describing fixes. Current status: [README.md](README.md), [STATUS.md](STATUS.md).
 >
-> **Implementation:** `HOW_TO_FIX.md` §1–§13 is **complete** as of 2026-08-13 (order in §10; no LangGraph). Smoke: `python tests/smoke_test.py` (52 tests).
+> **Implementation:** `HOW_TO_FIX.md` §1–§13 is **complete** as of 2026-08-13 (order in §10; no LangGraph). Smoke: `python tests/smoke_test.py` (59 tests).
 
 **Companion to:** `WHAT_TO_FIX.md`  
 **Constraint:** Backwards compatible. Do not rip out Streamlit, Mem0, Neo4j, or the existing `query()` contract until a migration path is live.  

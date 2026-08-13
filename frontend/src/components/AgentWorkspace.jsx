@@ -24,6 +24,7 @@ import {
   Network,
 } from "vis-network/standalone/umd/vis-network.min.js";
 import { apiHeaders } from "../apiHeaders";
+import { validateUserId } from "../userId";
 
 export default function AgentWorkspace({ userId, setUserId }) {
   const [messages, setMessages] = useState([]);
@@ -83,7 +84,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
   useEffect(() => {
     if (!graphOpen || !userId) return;
 
-    fetch(`/api/graph?user_id=${userId}`)
+    fetch(`/api/graph?user_id=${encodeURIComponent(userId)}`)
       .then((res) => res.json())
       .then((graphData) => {
         setGraphIsMock(Boolean(graphData.is_mock));
@@ -189,7 +190,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
           setSelectedEdge(null);
         });
       })
-      .catch((err) => console.error("Error drawing graph:", err));
+      .catch((err) => {
+        console.error("Error drawing graph:", err);
+        setGraphIsMock(true);
+        setGraphMockReason("offline");
+      });
 
     return () => {
       if (networkRef.current) {
@@ -453,9 +458,17 @@ export default function AgentWorkspace({ userId, setUserId }) {
                   <input
                     type="text"
                     value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const err = validateUserId(next);
+                      if (err && next.trim()) {
+                        return;
+                      }
+                      setUserId(next);
+                    }}
                     className="bg-transparent border-none text-white text-base font-subheading font-bold focus:outline-none focus:ring-0 w-32 p-0"
-                    placeholder="Workspace Name"
+                    placeholder="Moham_Khan"
+                    title="Letters, digits, '.', '_' or '-'. Use underscores, not spaces."
                   />
                 </div>
               </div>
@@ -657,8 +670,9 @@ export default function AgentWorkspace({ userId, setUserId }) {
                 Agentic Workspace Initialized
               </h3>
               <p className="text-xs text-cyber-muted leading-relaxed font-light font-body">
-                Upload your document database in the sidebar or ask questions
-                about Rahul's ML NLP classes to trigger property graphs.
+                Upload PDFs or TXT in the sidebar, then ask about those
+                documents. The live graph (Neural Details) shows entities and
+                chunks for this workspace only.
               </p>
             </div>
           )}
@@ -906,7 +920,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
               </div>
 
               <div className="border-t border-cyber-border/40 pt-4 text-[10px] text-cyber-muted text-center font-subheading">
-                Showing live Neo4j AuraDB graph connections
+                {graphIsMock
+                  ? graphMockReason === "offline"
+                    ? "Preview graph — Neo4j is unreachable"
+                    : "Preview graph — no documents indexed for this workspace"
+                  : "Live Neo4j AuraDB graph for this workspace"}
               </div>
             </div>
           </motion.div>

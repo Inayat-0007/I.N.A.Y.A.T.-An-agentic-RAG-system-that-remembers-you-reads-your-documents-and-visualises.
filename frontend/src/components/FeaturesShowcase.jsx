@@ -31,17 +31,17 @@ export default function FeaturesShowcase() {
     {
       icon: <Share2 className="w-6 h-6 text-cyber-magenta" />,
       title: "Interactive Graph Drawer",
-      desc: "Visualizes live database relationship charts with Vis.js networks. Inject prompts from nodes directly into chat.",
+      desc: "Vis.js canvas of the live (or preview) graph. Neural Details shows node/edge properties; Use in Chat injects the selection.",
     },
     {
       icon: <ToggleLeft className="w-6 h-6 text-cyber-gold" />,
       title: "Resilience Testing Panel",
-      desc: "Enables manual force-fail toggle triggers in the sidebar UI, offering visible verification of circuit isolation loops.",
+      desc: "Force-open Mem0 or Neo4j breakers in the sidebar. Requires INAYAT_DEMO_MODE=true; otherwise the API returns 403.",
     },
     {
       icon: <UserCheck className="w-6 h-6 text-blue-400" />,
       title: "Dynamic Profile Isolation",
-      desc: "Stores separate user data directories and chat histories, linked using browser session query strings.",
+      desc: "Stores per-user folders, Mem0 user_id, and graph metadata filters on a shared Neo4j database. Demo isolation — not multi-tenant SaaS.",
     },
     {
       icon: <Terminal className="w-6 h-6 text-zinc-400" />,
@@ -51,7 +51,7 @@ export default function FeaturesShowcase() {
     {
       icon: <Award className="w-6 h-6 text-amber-500" />,
       title: "Industrial Code Quality",
-      desc: "Backed by 52 smoke tests plus 10 live integration tests; CI runs smoke and frontend build on every PR.",
+      desc: "Backed by 59 smoke tests plus 10 live integration tests; CI runs smoke and frontend build on every PR.",
     },
   ];
 

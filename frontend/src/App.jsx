@@ -5,6 +5,7 @@ import FeaturesShowcase from './components/FeaturesShowcase.jsx'
 import AgentWorkspace from './components/AgentWorkspace.jsx'
 import ProductTour from './components/ProductTour.jsx'
 import { Cpu, ShieldCheck, HelpCircle } from 'lucide-react'
+import { validateUserId } from './userId'
 
 export default function App() {
   const [activeView, setActiveView] = useState('landing') // 'landing' | 'agent'
@@ -25,7 +26,7 @@ export default function App() {
         setApiOk(data.ok)
         setWarnings(data.warnings || [])
         
-        if (userParam && userParam.trim()) {
+        if (userParam && !validateUserId(userParam)) {
           setUserId(userParam.trim())
           setActiveView('agent')
         }
@@ -38,17 +39,23 @@ export default function App() {
 
   // Sync active user to URL parameters
   const handleUserSessionChange = (newId) => {
-    setUserId(newId)
-    const url = new URL(window.location.href)
-    if (newId && newId.trim()) {
-      url.searchParams.set('user', newId.trim())
-      window.history.pushState({}, '', url)
-      setActiveView('agent')
-    } else {
+    const trimmed = (newId || '').trim()
+    if (!trimmed) {
+      setUserId('')
+      const url = new URL(window.location.href)
       url.searchParams.delete('user')
       window.history.pushState({}, '', url)
       setActiveView('landing')
+      return
     }
+    if (validateUserId(trimmed)) {
+      return
+    }
+    setUserId(trimmed)
+    const url = new URL(window.location.href)
+    url.searchParams.set('user', trimmed)
+    window.history.pushState({}, '', url)
+    setActiveView('agent')
   }
 
   return (
@@ -166,7 +173,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Interactive SaaS Guided Tour Overlay */}
+      {/* Product tour overlay (demo walkthrough, not a SaaS onboarding flow) */}
       {showTour && <ProductTour onClose={() => setShowTour(false)} />}
     </div>
   )

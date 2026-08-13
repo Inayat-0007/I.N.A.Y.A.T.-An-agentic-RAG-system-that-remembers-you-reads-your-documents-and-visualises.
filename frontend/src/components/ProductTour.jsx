@@ -9,7 +9,7 @@ export default function ProductTour({ onClose }) {
     {
       icon: <Cpu className="w-8 h-8 text-cyber-cyan animate-pulse" />,
       title: "Isolated Workspaces",
-      desc: "Enter your name (e.g. Rahul) in the user switcher. This creates an isolated folder path and updates your browser URL parameter so that your chats, files, and database indexes are completely isolated."
+      desc: "Enter a workspace id (e.g. Moham_Khan — underscores, not spaces). That id becomes the folder path and the ?user= URL so chats, files, and graph indexes stay isolated."
     },
     {
       icon: <Database className="w-8 h-8 text-purple-400" />,
