@@ -165,7 +165,7 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="pt-[77px] h-[calc(100vh)]">
+        <div className="pt-[77px] h-screen overflow-hidden">
           <AgentWorkspace 
             userId={userId} 
             setUserId={handleUserSessionChange} 

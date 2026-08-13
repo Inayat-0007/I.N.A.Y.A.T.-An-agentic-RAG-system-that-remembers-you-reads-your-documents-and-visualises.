@@ -24,7 +24,7 @@ export default function ProductTour({ onClose }) {
     {
       icon: <Share2 className="w-8 h-8 text-cyber-gold animate-spin-slow" />,
       title: "Interactive Neural Graph",
-      desc: "Open the visualization canvas to inspect database relationships. Click nodes or links to review metadata attributes, and click 'Use in Chat' to instantly prompt the agent with the selected entity relationship!"
+      desc: "The Neural Architecture Graph stays on the right of chat. Click a node to open Neural Details (file name and text preview). Empty workspaces show a preview until you upload a document."
     }
   ]
 

@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Send,
-  User,
   Cpu,
   RefreshCw,
   Trash2,
   BookOpen,
   Upload,
-  CheckCircle,
   Database,
   ToggleLeft,
   ToggleRight,
@@ -39,9 +37,10 @@ export default function AgentWorkspace({ userId, setUserId }) {
   });
   const [breakers, setBreakers] = useState({ mem0: false, neo4j: false });
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [graphOpen, setGraphOpen] = useState(false);
+  const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [graphIsMock, setGraphIsMock] = useState(false);
   const [graphMockReason, setGraphMockReason] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
 
@@ -80,13 +79,18 @@ export default function AgentWorkspace({ userId, setUserId }) {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Render network graph when graphOpen is toggled
+  const refreshGraph = () => setGraphRefreshKey((k) => k + 1);
+
+  // Always draw the live Neo4j vis.js graph in the right-hand panel
   useEffect(() => {
-    if (!graphOpen || !userId) return;
+    if (!userId) return;
+    let cancelled = false;
+    setGraphLoading(true);
 
     fetch(`/api/graph?user_id=${encodeURIComponent(userId)}`)
       .then((res) => res.json())
       .then((graphData) => {
+        if (cancelled) return;
         setGraphIsMock(Boolean(graphData.is_mock));
         setGraphMockReason(graphData.mock_reason || null);
         const container = containerRef.current;
@@ -164,6 +168,12 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
         const network = new Network(container, { nodes, edges }, options);
         networkRef.current = network;
+        requestAnimationFrame(() => {
+          if (!cancelled && networkRef.current) {
+            networkRef.current.redraw();
+            networkRef.current.fit({ animation: false });
+          }
+        });
 
         network.on("click", (params) => {
           if (params.nodes && params.nodes.length > 0) {
@@ -189,20 +199,27 @@ export default function AgentWorkspace({ userId, setUserId }) {
           setSelectedNode(null);
           setSelectedEdge(null);
         });
+        network.fit({ animation: false });
       })
       .catch((err) => {
         console.error("Error drawing graph:", err);
-        setGraphIsMock(true);
-        setGraphMockReason("offline");
+        if (!cancelled) {
+          setGraphIsMock(true);
+          setGraphMockReason("offline");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGraphLoading(false);
       });
 
     return () => {
+      cancelled = true;
       if (networkRef.current) {
         networkRef.current.destroy();
         networkRef.current = null;
       }
     };
-  }, [graphOpen, userId]);
+  }, [userId, graphRefreshKey]);
 
   // API wrappers
   const refreshMemories = async () => {
@@ -311,12 +328,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
         refreshMemories();
       }
 
-      // Trigger graph data check if open
-      if (graphOpen) {
-        // Redraw Vis.js graph
-        setGraphOpen(false);
-        setTimeout(() => setGraphOpen(true), 50);
-      }
+      refreshGraph();
     } catch (err) {
       console.error("Query execution failed:", err);
       setMessages((prev) => [
@@ -370,10 +382,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
           }
           if (statusData.status === "ready") {
             alert(`Indexing complete for: ${data.indexed_files.join(", ")}`);
-            if (graphOpen) {
-              setGraphOpen(false);
-              setTimeout(() => setGraphOpen(true), 50);
-            }
+            refreshGraph();
           } else if (statusData.status === "error") {
             alert(statusData.error || "Indexing failed.");
           }
@@ -386,10 +395,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
         alert(
           `Successfully ingested: ${data.indexed_files.join(", ")}. Graph Index updated!`,
         );
-        if (graphOpen) {
-          setGraphOpen(false);
-          setTimeout(() => setGraphOpen(true), 50);
-        }
+        refreshGraph();
       } else {
         alert(data.detail || "Upload failed.");
       }
@@ -403,9 +409,32 @@ export default function AgentWorkspace({ userId, setUserId }) {
 
   // Use graph node / edge inside chat
   const handleInjectPrompt = (promptText) => {
-    setGraphOpen(false);
     sendMessage(promptText);
   };
+
+  const nodeProps = selectedNode?.properties || {};
+  const nodeFileName = nodeProps.file_name;
+  const nodeText = nodeProps.text;
+  const otherPropKeys = Object.keys(nodeProps).filter(
+    (key) => key !== "file_name" && key !== "text",
+  );
+
+  const graphBanner =
+    !graphIsMock
+      ? {
+          className:
+            "bg-emerald-500/15 border-emerald-400/40 text-emerald-300",
+          text: "Connected to Neo4j — live knowledge graph for this workspace",
+        }
+      : graphMockReason === "offline"
+        ? {
+            className: "bg-amber-500/15 border-amber-400/40 text-amber-300",
+            text: "Neo4j is unreachable — showing system architecture preview",
+          }
+        : {
+            className: "bg-sky-500/15 border-sky-400/40 text-sky-300",
+            text: "No documents indexed yet. Upload a PDF or TXT to build your knowledge graph.",
+          };
 
   const renderStatus = (status) => {
     if (status.includes("Connected")) {
@@ -634,8 +663,9 @@ export default function AgentWorkspace({ userId, setUserId }) {
         )}
       </AnimatePresence>
 
-      {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col h-full bg-cyber-bg relative z-10">
+      {/* Chat (left) + Neural Architecture Graph (right) */}
+      <div className="flex-1 flex min-w-0 h-full">
+      <main className="flex-1 min-w-0 flex flex-col h-full bg-cyber-bg relative z-10">
         {/* Top Header info */}
         <div className="py-4 px-6 border-b border-cyber-border flex justify-between items-center pl-16">
           <div>
@@ -648,14 +678,6 @@ export default function AgentWorkspace({ userId, setUserId }) {
               <span className="text-white">data/documents/{userId}/</span>
             </p>
           </div>
-
-          <button
-            onClick={() => setGraphOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan hover:text-cyber-bg text-xs font-heading font-bold rounded-xl shadow-[0_0_12px_rgba(0,240,255,0.15)] transition-all duration-300"
-          >
-            <Share2 className="w-4 h-4 animate-spin-slow" /> Visualize Neural
-            Graph
-          </button>
         </div>
 
         {/* Message Panel Scroll Grid */}
@@ -776,160 +798,145 @@ export default function AgentWorkspace({ userId, setUserId }) {
         </div>
       </main>
 
-      {/* Sliding Knowledge Graph Overlay Screen */}
-      <AnimatePresence>
-        {graphOpen && (
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "tween", duration: 0.35 }}
-            className="absolute inset-0 z-40 flex bg-cyber-bg/95 backdrop-filter backdrop-blur-md"
+      <aside className="w-[46%] min-w-[340px] max-w-[640px] h-full flex flex-col border-l border-cyber-border bg-cyber-bg/80 z-10">
+        <div className="py-3 px-4 border-b border-cyber-border flex items-center justify-between gap-2">
+          <h2 className="text-sm font-heading font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <Share2 className="w-4 h-4 text-cyber-cyan" /> Neural Architecture
+            Graph
+          </h2>
+          <button
+            onClick={refreshGraph}
+            className="p-1.5 rounded-lg border border-cyber-border hover:border-cyber-cyan text-cyber-muted hover:text-cyber-cyan transition-colors"
+            title="Refresh graph from Neo4j"
           >
-            {/* Graph Visualizer Panel */}
-            <div className="flex-1 h-full relative">
-              {/* Back CTA */}
-              <button
-                onClick={() => setGraphOpen(false)}
-                className="absolute top-4 left-4 z-50 px-4 py-2 bg-zinc-900 border border-cyber-border hover:border-cyber-cyan text-white text-xs font-heading rounded-xl shadow-lg transition-colors"
-              >
-                ← Back to Workspace Chat
-              </button>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${graphLoading ? "animate-spin" : ""}`}
+            />
+          </button>
+        </div>
 
-              <div className="absolute top-4 right-4 z-30 bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan px-3 py-1.5 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 animate-pulse">
-                <Sparkles className="w-4 h-4" /> Interactive Vis.js Canvas
+        <div
+          className={`mx-3 mt-3 px-3 py-2 rounded-xl border text-[10px] font-heading font-bold ${graphBanner.className}`}
+        >
+          {graphBanner.text}
+        </div>
+
+        <div className="flex-1 min-h-0 flex flex-col mt-2">
+          <div className="flex-1 min-h-[220px] relative">
+            <div ref={containerRef} className="absolute inset-0" />
+            {graphLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-cyber-bg/40 pointer-events-none">
+                <span className="text-[10px] font-heading text-cyber-cyan uppercase tracking-widest">
+                  Loading graph…
+                </span>
               </div>
-              {graphIsMock && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-amber-500/15 border border-amber-400/40 text-amber-300 px-4 py-2 rounded-xl text-xs font-heading font-bold">
-                  {graphMockReason === "offline"
-                    ? "Neo4j is unreachable — showing system architecture preview"
-                    : "No documents indexed yet. Upload a PDF to build your knowledge graph."}
-                </div>
-              )}
+            )}
+          </div>
 
-              {/* Vis.js network container */}
-              <div ref={containerRef} className="w-full h-full" />
-            </div>
+          <div className="h-[38%] min-h-[180px] max-h-[280px] border-t border-cyber-border bg-cyber-bg/90 p-4 overflow-y-auto">
+            <h3 className="text-xs font-heading font-black text-white border-b border-cyber-border pb-2 mb-3 flex items-center gap-2">
+              <Share2 className="w-4 h-4 text-cyber-cyan" /> Neural Details
+            </h3>
 
-            {/* Properties details panel drawer */}
-            <div className="w-80 h-full border-l border-cyber-border bg-cyber-bg/90 p-6 flex flex-col justify-between overflow-y-auto">
-              <div>
-                <h3 className="text-base font-heading font-black text-white border-b border-cyber-border pb-3 mb-6 flex items-center gap-2">
-                  <Share2 className="w-5 h-5 text-cyber-cyan" /> Neural Details
-                </h3>
+            {selectedNode ? (
+              <div className="space-y-3">
+                <span className="text-[10px] font-heading font-bold bg-cyber-cyan/15 border border-cyber-cyan/35 text-cyber-cyan px-2 py-0.5 rounded uppercase">
+                  {selectedNode.group || "Node"}
+                </span>
+                <h4 className="text-sm font-heading font-bold text-white leading-tight">
+                  {selectedNode.label}
+                </h4>
 
-                {selectedNode ? (
-                  <div className="space-y-4">
-                    <span className="text-[10px] font-heading font-bold bg-cyber-cyan/15 border border-cyber-cyan/35 text-cyber-cyan px-2 py-0.5 rounded uppercase">
-                      Node Properties ({selectedNode.group})
+                {nodeFileName && (
+                  <div>
+                    <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
+                      file_name
+                    </label>
+                    <span className="text-xs text-cyber-cyan font-subheading">
+                      {String(nodeFileName)}
                     </span>
-                    <h4 className="text-lg font-heading font-bold text-white mt-2 leading-tight">
-                      {selectedNode.label}
-                    </h4>
-
-                    <div className="bg-zinc-950/60 border border-cyber-border/40 rounded-xl p-4 mt-4 max-h-96 overflow-y-auto">
-                      {selectedNode.properties &&
-                        Object.keys(selectedNode.properties).map((key) => (
-                          <div key={key} className="mb-3">
-                            <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
-                              {key}
-                            </label>
-                            <span className="text-xs text-cyber-text block leading-relaxed whitespace-pre-wrap">
-                              {selectedNode.properties[key]}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const label = selectedNode.label;
-                        const props = selectedNode.properties || {};
-                        let promptText = `Tell me more about ${label}`;
-                        if (props.text) {
-                          promptText = `From the document chunk details, tell me more about: ${props.text.substring(0, 150)}...`;
-                        } else if (props.Description) {
-                          promptText = `Tell me about ${label}: ${props.Description}`;
-                        }
-                        handleInjectPrompt(promptText);
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs flex items-center justify-center gap-1.5 mt-6 shadow-lg shadow-cyber-cyan/20 hover:scale-[1.02] transition-transform"
-                    >
-                      Use in Chat 💬
-                    </button>
                   </div>
-                ) : selectedEdge ? (
-                  <div className="space-y-4">
-                    <span className="text-[10px] font-heading font-bold bg-cyber-magenta/15 border border-cyber-magenta/35 text-cyber-magenta px-2 py-0.5 rounded uppercase">
-                      Connection Link properties
-                    </span>
-                    <div className="flex flex-col gap-2 mt-4">
-                      <div>
-                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">
-                          Source Entity
-                        </label>
-                        <span className="text-xs font-semibold text-white">
-                          {selectedEdge.fromLabel}
-                        </span>
-                      </div>
-                      <div className="text-cyber-magenta text-xs font-heading font-bold py-1">
-                        → {selectedEdge.label || "RELATED"} →
-                      </div>
-                      <div>
-                        <label className="text-[8px] font-heading font-bold text-cyber-muted uppercase block">
-                          Target Entity
-                        </label>
-                        <span className="text-xs font-semibold text-white">
-                          {selectedEdge.toLabel}
-                        </span>
-                      </div>
-                    </div>
+                )}
 
-                    <div className="bg-zinc-950/60 border border-cyber-border/40 rounded-xl p-4 mt-4">
-                      {selectedEdge.properties &&
-                        Object.keys(selectedEdge.properties).map((key) => (
-                          <div key={key} className="mb-3">
-                            <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
-                              {key}
-                            </label>
-                            <span className="text-xs text-cyber-text block leading-relaxed">
-                              {selectedEdge.properties[key]}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const promptText = `Explain the connection: ${selectedEdge.fromLabel} —[${selectedEdge.label || "RELATED"}]—> ${selectedEdge.toLabel}`;
-                        handleInjectPrompt(promptText);
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs flex items-center justify-center gap-1.5 mt-6 shadow-lg shadow-cyber-cyan/20 hover:scale-[1.02] transition-transform"
-                    >
-                      Use in Chat 💬
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-80 text-center opacity-60">
-                    <HelpCircle className="w-8 h-8 text-cyber-muted mb-2 animate-bounce" />
-                    <p className="text-xs text-cyber-muted font-subheading uppercase tracking-widest">
-                      Select a node or connection path to probe properties.
+                {nodeText && (
+                  <div>
+                    <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
+                      text preview
+                    </label>
+                    <p className="text-xs text-cyber-text leading-relaxed whitespace-pre-wrap bg-zinc-950/60 border border-cyber-border/40 rounded-lg p-2 max-h-24 overflow-y-auto">
+                      {String(nodeText).length > 600
+                        ? `${String(nodeText).substring(0, 600)}…`
+                        : String(nodeText)}
                     </p>
                   </div>
                 )}
-              </div>
 
-              <div className="border-t border-cyber-border/40 pt-4 text-[10px] text-cyber-muted text-center font-subheading">
-                {graphIsMock
-                  ? graphMockReason === "offline"
-                    ? "Preview graph — Neo4j is unreachable"
-                    : "Preview graph — no documents indexed for this workspace"
-                  : "Live Neo4j AuraDB graph for this workspace"}
+                {otherPropKeys.length > 0 && (
+                  <div className="bg-zinc-950/60 border border-cyber-border/40 rounded-xl p-3 max-h-28 overflow-y-auto">
+                    {otherPropKeys.map((key) => (
+                      <div key={key} className="mb-2 last:mb-0">
+                        <label className="text-[9px] font-heading font-bold text-cyber-muted uppercase tracking-wider block mb-0.5">
+                          {key}
+                        </label>
+                        <span className="text-xs text-cyber-text block leading-relaxed whitespace-pre-wrap">
+                          {String(nodeProps[key])}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const label = selectedNode.label;
+                    const props = selectedNode.properties || {};
+                    let promptText = `Tell me more about ${label}`;
+                    if (props.text) {
+                      promptText = `From the document chunk details, tell me more about: ${String(props.text).substring(0, 150)}...`;
+                    } else if (props.Description) {
+                      promptText = `Tell me about ${label}: ${props.Description}`;
+                    }
+                    handleInjectPrompt(promptText);
+                  }}
+                  className="w-full py-2 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs"
+                >
+                  Use in Chat
+                </button>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            ) : selectedEdge ? (
+              <div className="space-y-3">
+                <span className="text-[10px] font-heading font-bold bg-cyber-magenta/15 border border-cyber-magenta/35 text-cyber-magenta px-2 py-0.5 rounded uppercase">
+                  Connection
+                </span>
+                <p className="text-xs text-white">
+                  {selectedEdge.fromLabel}{" "}
+                  <span className="text-cyber-magenta">
+                    → {selectedEdge.label || "RELATED"} →
+                  </span>{" "}
+                  {selectedEdge.toLabel}
+                </p>
+                <button
+                  onClick={() => {
+                    const promptText = `Explain the connection: ${selectedEdge.fromLabel} —[${selectedEdge.label || "RELATED"}]—> ${selectedEdge.toLabel}`;
+                    handleInjectPrompt(promptText);
+                  }}
+                  className="w-full py-2 rounded-xl bg-gradient-to-r from-cyber-cyan to-cyber-magenta text-cyber-bg font-heading font-extrabold text-xs"
+                >
+                  Use in Chat
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-24 text-center opacity-60">
+                <HelpCircle className="w-6 h-6 text-cyber-muted mb-2" />
+                <p className="text-[10px] text-cyber-muted font-subheading uppercase tracking-widest">
+                  Click a node to see file_name and text preview
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+      </div>
     </div>
   );
 }
