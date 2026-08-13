@@ -9,6 +9,8 @@ llama-index-llms-google-genai==0.9.5
 llama-index-embeddings-google-genai==0.5.1
 llama-index-graph-stores-neo4j==0.7.0
 mem0ai==2.0.4
+pypdf==6.15.0
+pymupdf==1.26.5
 neo4j==5.28.4
 tenacity==9.1.4
 python-dotenv==1.2.2

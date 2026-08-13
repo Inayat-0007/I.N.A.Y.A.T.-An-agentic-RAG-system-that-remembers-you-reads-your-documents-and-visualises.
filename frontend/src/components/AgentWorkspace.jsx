@@ -43,28 +43,48 @@ export default function AgentWorkspace({ userId, setUserId }) {
   const [graphLoading, setGraphLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
+  const [documents, setDocuments] = useState([]);
 
   const chatEndRef = useRef(null);
   const networkRef = useRef(null);
   const containerRef = useRef(null);
 
+  const refreshDocuments = async () => {
+    try {
+      const res = await fetch(
+        `/api/documents?user_id=${encodeURIComponent(userId)}`,
+      );
+      const data = await res.json();
+      setDocuments(data.documents || []);
+      return data.documents || [];
+    } catch (err) {
+      console.error("Error listing documents:", err);
+      setDocuments([]);
+      return [];
+    }
+  };
+
   // Load chat history & memories from local storage key / API on user switch
   useEffect(() => {
     if (!userId) return;
 
-    // Load chat history
-    const cachedHistory = localStorage.getItem(`messages_${userId}`);
-    if (cachedHistory) {
-      setMessages(JSON.parse(cachedHistory));
-    } else {
-      setMessages([]);
-    }
-
-    // Load memories
-    refreshMemories();
-
-    // Load health status
     refreshHealth();
+
+    refreshDocuments().then((docs) => {
+      if (!docs.length) {
+        setMessages([]);
+        localStorage.removeItem(`messages_${userId}`);
+        setMemories([]);
+        return;
+      }
+      const cachedHistory = localStorage.getItem(`messages_${userId}`);
+      if (cachedHistory) {
+        setMessages(JSON.parse(cachedHistory));
+      } else {
+        setMessages([]);
+      }
+      refreshMemories();
+    });
   }, [userId]);
 
   // Cache message changes to local storage
@@ -95,6 +115,17 @@ export default function AgentWorkspace({ userId, setUserId }) {
         setGraphMockReason(graphData.mock_reason || null);
         const container = containerRef.current;
         if (!container) return;
+
+        if (networkRef.current) {
+          networkRef.current.destroy();
+          networkRef.current = null;
+        }
+
+        if (!graphData.nodes || graphData.nodes.length === 0) {
+          setSelectedNode(null);
+          setSelectedEdge(null);
+          return;
+        }
 
         const nodeDetails = {};
         (graphData.nodes || []).forEach((n) => {
@@ -363,6 +394,15 @@ export default function AgentWorkspace({ userId, setUserId }) {
       });
       const data = await res.json();
 
+      if (!res.ok && res.status !== 202) {
+        const detail =
+          typeof data.detail === "string"
+            ? data.detail
+            : data.detail?.message || JSON.stringify(data.detail || data);
+        alert(detail || "Upload failed.");
+        return;
+      }
+
       if (res.status === 409) {
         alert(data.detail?.message || "Index build already in progress.");
         return;
@@ -382,6 +422,8 @@ export default function AgentWorkspace({ userId, setUserId }) {
           }
           if (statusData.status === "ready") {
             alert(`Indexing complete for: ${data.indexed_files.join(", ")}`);
+            refreshDocuments();
+            refreshMemories();
             refreshGraph();
           } else if (statusData.status === "error") {
             alert(statusData.error || "Indexing failed.");
@@ -395,6 +437,8 @@ export default function AgentWorkspace({ userId, setUserId }) {
         alert(
           `Successfully ingested: ${data.indexed_files.join(", ")}. Graph Index updated!`,
         );
+        refreshDocuments();
+        refreshMemories();
         refreshGraph();
       } else {
         alert(data.detail || "Upload failed.");
@@ -429,11 +473,11 @@ export default function AgentWorkspace({ userId, setUserId }) {
       : graphMockReason === "offline"
         ? {
             className: "bg-amber-500/15 border-amber-400/40 text-amber-300",
-            text: "Neo4j is unreachable — showing system architecture preview",
+            text: "Neo4j is unreachable — knowledge graph is empty until it reconnects",
           }
         : {
             className: "bg-sky-500/15 border-sky-400/40 text-sky-300",
-            text: "No documents indexed yet. Upload a PDF or TXT to build your knowledge graph.",
+            text: "Upload a PDF to build your knowledge graph",
           };
 
   const renderStatus = (status) => {
@@ -558,11 +602,24 @@ export default function AgentWorkspace({ userId, setUserId }) {
                       Upload PDF / TXT Files
                     </span>
                     <span className="text-[9px] text-cyber-muted font-light mt-1">
-                      Saves to data/documents/
+                      Saves to data/documents/{userId}/
                     </span>
                   </div>
                 )}
               </label>
+              {documents.length > 0 && (
+                <ul className="mt-3 space-y-1 max-h-20 overflow-y-auto">
+                  {documents.map((doc) => (
+                    <li
+                      key={doc.name}
+                      className="text-[10px] font-subheading text-cyber-cyan truncate"
+                      title={doc.name}
+                    >
+                      {doc.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {/* Health indicators panel */}
@@ -801,8 +858,7 @@ export default function AgentWorkspace({ userId, setUserId }) {
       <aside className="w-[46%] min-w-[340px] max-w-[640px] h-full flex flex-col border-l border-cyber-border bg-cyber-bg/80 z-10">
         <div className="py-3 px-4 border-b border-cyber-border flex items-center justify-between gap-2">
           <h2 className="text-sm font-heading font-black text-white uppercase tracking-wider flex items-center gap-2">
-            <Share2 className="w-4 h-4 text-cyber-cyan" /> Neural Architecture
-            Graph
+            <Share2 className="w-4 h-4 text-cyber-cyan" /> Knowledge Graph
           </h2>
           <button
             onClick={refreshGraph}
@@ -824,6 +880,20 @@ export default function AgentWorkspace({ userId, setUserId }) {
         <div className="flex-1 min-h-0 flex flex-col mt-2">
           <div className="flex-1 min-h-[220px] relative">
             <div ref={containerRef} className="absolute inset-0" />
+            {graphIsMock && !graphLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-6 text-center">
+                <Upload className="w-8 h-8 text-cyber-muted mb-3" />
+                <p className="text-xs font-heading font-bold text-white uppercase tracking-widest">
+                  {graphMockReason === "offline"
+                    ? "Graph database offline"
+                    : "Upload a PDF to build your knowledge graph"}
+                </p>
+                <p className="text-[10px] text-cyber-muted mt-2 font-body">
+                  System architecture stays on the landing page — this canvas
+                  is only your documents.
+                </p>
+              </div>
+            )}
             {graphLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-cyber-bg/40 pointer-events-none">
                 <span className="text-[10px] font-heading text-cyber-cyan uppercase tracking-widest">

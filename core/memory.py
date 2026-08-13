@@ -118,7 +118,7 @@ def get_memories(user_id: str) -> List[str]:
         return []
 
     def _get() -> List[str]:
-        raw = client.get_all(filters={"user_id": user_id})
+        raw = client.get_all(user_id=user_id)
         _cb.record_success()
         memories_list = raw.get("results", []) if isinstance(raw, dict) else raw
         if not memories_list:
@@ -156,7 +156,7 @@ def search_memories(user_id: str, query: str, limit: int = 5) -> List[str]:
         return []
 
     def _search() -> List[str]:
-        raw = client.search(query, filters={"user_id": user_id}, limit=limit)
+        raw = client.search(query, user_id=user_id, limit=limit)
         _cb.record_success()
         memories_list = raw.get("results", []) if isinstance(raw, dict) else raw
         if not memories_list:

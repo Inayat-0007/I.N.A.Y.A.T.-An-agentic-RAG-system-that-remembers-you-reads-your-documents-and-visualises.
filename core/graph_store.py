@@ -188,138 +188,17 @@ def _mock_visualization_graph(
     *,
     reason: str = "no_documents",
 ) -> dict:
-    """Return profile-customised demo graph when live user data is unavailable.
+    """Empty vis payload when this profile has no chunks (or Neo4j is down).
 
-    ``reason`` is ``no_documents`` (Neo4j up, this user has no chunks) or
-    ``offline`` (Neo4j unreachable). Callers must not treat empty-user mock
-    graphs as a connectivity failure.
+    Architecture nodes are not mixed into the knowledge graph. The landing
+    page owns the system diagram. ``reason`` is ``no_documents`` or ``offline``.
     """
-    prefix = f"{user_id}'s " if user_id and user_id.lower() != "default" else ""
-    nodes = [
-        {
-            "id": 1,
-            "label": f"{prefix}I.N.A.Y.A.T. Agent",
-            "group": "Agent",
-            "properties": {
-                "Role": f"Core Agent Coordinator for {user_id or 'User'}",
-                "Description": "Main reasoning agent which coordinates between user profiles, long-term memory (Mem0), and property graph storage (Neo4j RAG) using Google Gemini.",
-            },
-        },
-        {
-            "id": 2,
-            "label": "Gemini Flash Lite",
-            "group": "LLM",
-            "properties": {
-                "Model": "gemini-flash-lite-latest",
-                "Role": "Generative Language Model",
-                "Provider": "Google Gemini API via Google AI Studio",
-                "Wrapper": "ResilientGoogleGenAI for self-healing completions.",
-            },
-        },
-        {
-            "id": 3,
-            "label": f"{prefix}Mem0 Cloud Memory",
-            "group": "Memory",
-            "properties": {
-                "API": "Mem0 Cloud API",
-                "Role": "Long-Term Persistent Memory",
-                "Purpose": f"Saves and retrieves facts about {user_id or 'user'} preferences and history across sessions.",
-            },
-        },
-        {
-            "id": 4,
-            "label": "Neo4j AuraDB Graph",
-            "group": "GraphStore",
-            "properties": {
-                "Store": "Neo4j AuraDB Cloud",
-                "Role": "Property Graph Store",
-                "Structure": f"Entity-Relationship graph index built with LlamaIndex PropertyGraphIndex from data/documents/{user_id or 'user'}.",
-            },
-        },
-        {
-            "id": 5,
-            "label": "Circuit Breaker",
-            "group": "Resilience",
-            "properties": {
-                "Class": "CircuitBreaker",
-                "Role": "Self-Healing Guard",
-                "Status": "Closed (Normal Operations)",
-                "Failure Threshold": "3 consecutive errors",
-                "Recovery Time": "60 seconds",
-            },
-        },
-        {
-            "id": 6,
-            "label": f"{user_id or 'User'} Session Profile",
-            "group": "User",
-            "properties": {
-                "Source": "Streamlit Session State",
-                "Role": "Active User Session Profile",
-                "Scope": f"Tracks {user_id or 'user'} name, messages, and state parameters.",
-            },
-        },
-    ]
-    edges = [
-        {
-            "id": "e1",
-            "from": 6,
-            "to": 1,
-            "label": "inputs query",
-            "properties": {
-                "Interaction": "Sends natural language queries and documents to the agent."
-            },
-        },
-        {
-            "id": "e2",
-            "from": 1,
-            "to": 3,
-            "label": "fetches memories",
-            "properties": {
-                "Operation": "Extracts context-relevant memories for the active user name."
-            },
-        },
-        {
-            "id": "e3",
-            "from": 1,
-            "to": 4,
-            "label": "queries facts",
-            "properties": {
-                "Operation": "Executes vector search and cypher queries on entities and chunks."
-            },
-        },
-        {
-            "id": "e4",
-            "from": 1,
-            "to": 2,
-            "label": "completes prompt",
-            "properties": {
-                "Operation": "Submits final prompt constructed from user query, memories, and RAG chunks."
-            },
-        },
-        {
-            "id": "e5",
-            "from": 3,
-            "to": 5,
-            "label": "monitored by",
-            "properties": {
-                "Mechanism": "Wraps API requests. Opens circuit if requests fail consistently."
-            },
-        },
-        {
-            "id": "e6",
-            "from": 4,
-            "to": 5,
-            "label": "monitored by",
-            "properties": {
-                "Mechanism": "Wraps Cypher queries. Opens circuit if AuraDB goes offline."
-            },
-        },
-    ]
     return {
-        "nodes": nodes,
-        "edges": edges,
+        "nodes": [],
+        "edges": [],
         "is_mock": True,
         "mock_reason": reason,
+        "user_id": user_id,
     }
 
 
@@ -653,7 +532,7 @@ def _neo4j_reachable() -> bool:
 
 
 def get_visualization_data(user_id: str = "default") -> dict:
-    """Retrieve user-scoped nodes/edges; mock graph when empty or offline."""
+    """Retrieve user-scoped nodes/edges; empty canvas when empty or offline."""
     uid = UserId.parse(user_id).value
     if not _cb.allow_request() or get_driver() is None:
         logger.debug("Neo4j unavailable — mock visualization (offline) for %s.", uid)

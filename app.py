@@ -1326,12 +1326,13 @@ def main() -> None:
             is_mock_banner = "🟢 **Connected to Neo4j AuraDB** (Live Knowledge Graph)"
         elif reason == "offline":
             is_mock_banner = (
-                "⚠️ **Showing System Architecture Graph** (Neo4j is unreachable)"
+                "⚠️ **Neo4j is unreachable.** The knowledge graph is empty until "
+                "the database is back. System architecture lives on the landing page."
             )
         else:
             is_mock_banner = (
                 "📄 **No documents indexed yet.** Upload a PDF to build your "
-                "knowledge graph. Showing the system architecture preview until then."
+                "knowledge graph."
             )
         st.info(is_mock_banner)
 

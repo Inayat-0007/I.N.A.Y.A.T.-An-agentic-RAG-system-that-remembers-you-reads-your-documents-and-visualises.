@@ -11,7 +11,6 @@ import time
 from typing import Optional
 
 from core.graph_store import retrieve_user_chunks
-from core.ingest import get_index
 from core.llm_setup import configure_llama_settings, get_gemini_llm
 from core.observability import log_query_event, service_breaker_status, trace_span
 from core.resilience import safe_execute
@@ -143,9 +142,10 @@ def query_detailed(inp: QueryInput) -> QueryResult:
             context = "\n\n".join(excerpts)
             prompt = (
                 "You are I.N.A.Y.A.T. Answer using only the document excerpts "
-                "below. If they are insufficient, say so briefly.\n\n"
+                "below. Do not use facts from other user profiles or prior "
+                "workspaces. If the excerpts are insufficient, say so briefly.\n\n"
                 f"{context}\n\n"
-                f"{augmented}"
+                f"User question: {inp.question}"
             )
             llm = get_gemini_llm()
             return str(llm.complete(prompt)), len(excerpts)
@@ -171,7 +171,17 @@ def query_detailed(inp: QueryInput) -> QueryResult:
 
         def _llm_fallback() -> str:
             llm = get_gemini_llm()
-            resp = llm.complete(augmented)
+            if used_memory:
+                prompt = augmented
+            else:
+                prompt = (
+                    "You are I.N.A.Y.A.T. This workspace has no indexed documents "
+                    "and no memories for this profile. Answer the question generally. "
+                    "Do not claim knowledge from other user profiles or leftover "
+                    "sessions.\n\n"
+                    f"User question: {inp.question}"
+                )
+            resp = llm.complete(prompt)
             return str(resp)
 
         llm_started = time.perf_counter()

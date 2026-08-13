@@ -157,7 +157,8 @@ def _extract_pdf_text(path: Path) -> str:
     if not text or text.lstrip().startswith("%PDF"):
         raise ValueError(
             f"Could not extract text from PDF '{path.name}'. "
-            "The file may be scanned/image-only."
+            "Install pypdf/pymupdf in the runtime image, or use a text PDF "
+            "(scanned/image-only files are not supported)."
         )
     return text
 

@@ -24,7 +24,7 @@ export default function ProductTour({ onClose }) {
     {
       icon: <Share2 className="w-8 h-8 text-cyber-gold animate-spin-slow" />,
       title: "Interactive Neural Graph",
-      desc: "The Neural Architecture Graph stays on the right of chat. Click a node to open Neural Details (file name and text preview). Empty workspaces show a preview until you upload a document."
+      desc: "The knowledge graph stays on the right of chat. Click a node to open Neural Details (file name and text preview). Empty workspaces show a blank canvas until you upload a document — architecture stays on the landing page."
     }
   ]
 

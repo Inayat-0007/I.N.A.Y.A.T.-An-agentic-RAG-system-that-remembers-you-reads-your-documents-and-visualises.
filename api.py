@@ -26,10 +26,12 @@ from core.graph_store import close_driver, get_visualization_data
 from core.identity import InvalidUserId, UserId
 from core.ingest import (
     build_index,
-    get_index,
     get_index_status,
+    list_user_documents,
     save_uploads,
     schedule_index_build,
+    unindexed_document_names,
+    user_has_documents,
 )
 from core.memory import add_memory, build_memory_context, clear_memories, get_memories
 from core.observability import new_request_id, set_request_id
@@ -222,8 +224,17 @@ def api_clear_memories(user_id: str):
 @app.get("/api/graph")
 def api_get_graph(user_id: str):
     user = _parse_user_id(user_id) if user_id.strip() else UserId.parse("default")
-    get_index(user.value)
     return get_visualization_data(user.value)
+
+
+@app.get("/api/documents")
+def api_list_documents(user_id: str):
+    user = _parse_user_id(user_id)
+    return {
+        "user_id": user.value,
+        "documents": list_user_documents(user.value),
+        "unindexed": unindexed_document_names(user.value),
+    }
 
 
 @app.post(
@@ -242,7 +253,13 @@ def api_query_agent(req: QueryRequest = Body(...)):
     user = _parse_user_id(req.user_id)
 
     add_memory(user.value, req.question, kind="utterance")
-    memory_ctx, mem_lines = build_memory_context(user.value, req.question)
+    indexed = user_has_documents(user.value) and not unindexed_document_names(
+        user.value
+    )
+    if indexed:
+        memory_ctx, mem_lines = build_memory_context(user.value, req.question)
+    else:
+        memory_ctx, mem_lines = "", []
 
     result = query_detailed(
         QueryInput(
@@ -292,7 +309,14 @@ async def api_upload_files(user_id: str = Form(...), files: List[UploadFile] = F
 
     settings = get_settings()
     if settings.sync_ingest:
-        build_index(user.value, only_files=saved)
+        try:
+            build_index(user.value, only_files=saved)
+        except Exception as exc:
+            logger.exception("Sync ingest failed for %s", user.value)
+            raise HTTPException(
+                status_code=500,
+                detail=f"File saved but indexing failed: {exc}",
+            ) from exc
         return {
             "status": "success",
             "indexed_files": saved,
@@ -345,7 +369,14 @@ async def api_upload_files_sync(
     if not saved:
         raise HTTPException(status_code=400, detail="No valid PDF or TXT files were uploaded.")
 
-    build_index(user.value, only_files=saved)
+    try:
+        build_index(user.value, only_files=saved)
+    except Exception as exc:
+        logger.exception("Sync ingest failed for %s", user.value)
+        raise HTTPException(
+            status_code=500,
+            detail=f"File saved but indexing failed: {exc}",
+        ) from exc
     return {"status": "success", "indexed_files": saved, "index_status": get_index_status(user.value)}
 
 

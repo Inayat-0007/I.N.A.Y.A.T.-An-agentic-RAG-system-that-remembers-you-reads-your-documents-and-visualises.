@@ -17,6 +17,10 @@ llama-index-graph-stores-neo4j
 # Persistent user memory
 mem0ai
 
+# PDF text extraction (Docker image previously omitted these — ingest then failed)
+pypdf
+pymupdf
+
 # Neo4j graph database driver
 neo4j
 

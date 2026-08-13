@@ -151,6 +151,16 @@ class TestIdentity(unittest.TestCase):
         self.assertEqual(UserId.parse("Alice").value, "Alice")
         self.assertEqual(UserId.parse("Moham").value, "Moham")
         self.assertEqual(UserId.parse("default").value, "default")
+        self.assertEqual(UserId.parse("INAYAT_HUSSAIN").value, "INAYAT_HUSSAIN")
+        self.assertNotEqual(
+            UserId.parse("INAYAT_HUSSAIN").value, UserId.parse("Inayat").value
+        )
+
+    def test_reject_spaces_in_user_id(self) -> None:
+        from core.identity import InvalidUserId, UserId
+
+        with self.assertRaises(InvalidUserId):
+            UserId.parse("Inayat Hussain")
 
     def test_reject_path_traversal(self) -> None:
         from core.identity import InvalidUserId, UserId
@@ -463,8 +473,11 @@ class TestFailureDesign(unittest.TestCase):
         graph = _assemble_visualization([], "INAYAT_TEST_1")
         self.assertTrue(graph["is_mock"])
         self.assertEqual(graph["mock_reason"], "no_documents")
+        self.assertEqual(graph["nodes"], [])
+        self.assertEqual(graph["edges"], [])
         offline = _mock_visualization_graph("INAYAT_TEST_1", reason="offline")
         self.assertEqual(offline["mock_reason"], "offline")
+        self.assertEqual(offline["nodes"], [])
 
     def test_index_build_in_progress(self) -> None:
         from core import ingest as ingest_mod
