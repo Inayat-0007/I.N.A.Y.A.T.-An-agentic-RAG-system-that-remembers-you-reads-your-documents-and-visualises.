@@ -31,8 +31,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY . .
 
-# Set ownership to non-root user
-RUN chown -R appuser:appuser /app
+RUN mkdir -p /app/data/documents && chown -R appuser:appuser /app
 USER appuser
 
 # Expose port

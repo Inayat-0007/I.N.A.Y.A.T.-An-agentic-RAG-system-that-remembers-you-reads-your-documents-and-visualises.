@@ -1,7 +1,7 @@
 # I.N.A.Y.A.T. — Current Status (Examiner Sheet)
 
 **Last updated:** 2026-08-13  
-**Maturity:** Advanced MVP / demo-ready — not hardened production.
+**Maturity:** Advanced MVP / demo-ready. Share with **Docker Compose** (`docker compose up --build`). Kubernetes is not used (no cluster). “Not hardened production” means optional auth and a shared graph — not “cannot Docker.”
 
 ## Examiner one-liner
 
@@ -20,7 +20,7 @@ I.N.A.Y.A.T. is a **single-agent, production-pattern RAG system** (Gemini + Llam
 | **Smoke tests**      | 59 (`tests/smoke_test.py`) — run on every CI push                                         |
 | **Live integration** | 10 (`tests/backend_feature_test.py`) — manual / scheduled only                            |
 | **CI**               | flake8 + black + gitleaks + pip-audit + smoke + frontend build                            |
-| **Docker**           | Default SPA `Dockerfile.spa` `:8000`; Streamlit `--profile streamlit` `:8501`             |
+| **Docker**           | `docker compose up --build` → SPA `:8000`; `--profile streamlit` → `:8501`. No k8s.       |
 | **Seed docs**        | `data/documents/_samples/` — copy to `{your_name}/`                                       |
 | **UIs**              | Streamlit (`app.py`) + FastAPI/React (`api.py`, `frontend/`)                              |
 | **Isolation**        | Soft: folders + metadata + Mem0 `user_id`; **shared Neo4j DB**; optional `INAYAT_API_KEY` |
@@ -31,6 +31,10 @@ I.N.A.Y.A.T. is a **single-agent, production-pattern RAG system** (Gemini + Llam
 | **Demo breakers**    | `INAYAT_DEMO_MODE=true` (set by `activate.ps1`)                                           |
 
 ## How to run
+
+Share path (no Python on the host): copy `.env.example` → `.env`, then `docker compose up --build` → http://localhost:8000. Details: [DOCKER.md](DOCKER.md).
+
+Native Streamlit:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File activate.ps1
@@ -77,5 +81,6 @@ Punch-list mapping (`WHAT_TO_FIX.md` → spec): 1–14 → §1; 15–21 → §2/
 - Per-user Neo4j Aura instances
 - LangGraph / CrewAI multi-agent orchestration
 - Replacing Mem0 or Neo4j
+- Kubernetes / cluster manifests (Compose is enough to share)
 - Claiming production hardening while auth is optional
 - Incomplete snippets or `# TODO` in shipped code

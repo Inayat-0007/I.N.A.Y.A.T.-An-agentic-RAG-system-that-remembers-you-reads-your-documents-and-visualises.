@@ -1,5 +1,12 @@
-# I.N.A.Y.A.T. compose — Phase 2 default is the SPA (FastAPI :8000).
-# Streamlit remains available: docker compose --profile streamlit up
+# I.N.A.Y.A.T. — share with Docker Compose (not Kubernetes).
+#
+# 1. Copy .env.example → .env and add your Gemini / Mem0 / Aura keys.
+# 2. SPA (default):        docker compose up --build
+#    → http://localhost:8000
+# 3. Streamlit (optional): docker compose --profile streamlit up --build
+#    → http://localhost:8501
+#
+# Cloud APIs stay outside the container. Python is not required on the host.
 
 services:
   inayat-spa:
@@ -13,7 +20,13 @@ services:
       - ./data:/app/data
     env_file:
       - .env
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
 
   inayat-streamlit:
     build:
@@ -27,4 +40,10 @@ services:
       - ./data:/app/data
     env_file:
       - .env
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3

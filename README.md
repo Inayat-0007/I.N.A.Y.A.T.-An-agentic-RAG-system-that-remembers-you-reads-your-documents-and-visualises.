@@ -23,7 +23,7 @@
 
 | Fact                | Value                                                                                    |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| **Maturity**        | Advanced MVP / demo-ready; not hardened production                                       |
+| **Maturity**        | Advanced MVP / demo-ready. **Share via Docker Compose** — not a Kubernetes/SaaS cluster |
 | **Agent model**     | Single-agent RAG pipeline (not LangGraph/CrewAI multi-agent)                             |
 | **Python**          | 3.12                                                                                     |
 | **LLM**             | `gemini-flash-lite-latest`                                                               |
@@ -32,7 +32,7 @@
 | **Retrieval**       | PropertyGraphIndex, `similarity_top_k=5`, `user_id` metadata filter                      |
 | **Tests**           | 59 smoke (`tests/smoke_test.py`) + 10 live (`tests/backend_feature_test.py`)             |
 | **CI**              | flake8 (E9,F63,F7,F82) + black + gitleaks + pip-audit + smoke + frontend build           |
-| **Docker**          | Default SPA `:8000` (`Dockerfile.spa`); Streamlit `--profile streamlit` `:8501`          |
+| **Docker**          | `docker compose up --build` → SPA `:8000`. Streamlit: `--profile streamlit` `:8501`. No k8s. |
 | **Seed docs**       | `data/documents/_samples/` (MIT); copy into `data/documents/{your_name}/`                |
 | **UIs**             | Streamlit (`app.py`) and FastAPI+React (`api.py`, `frontend/`)                           |
 | **User ids**        | `UserId.parse()` — letters, digits, `.` `_` `-`; **underscores, not spaces**             |
@@ -50,18 +50,19 @@ See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 ## 📋 Table of Contents
 
 1. [Overview](#-overview)
-2. [What this repo now includes](#-what-this-repo-now-includes)
-3. [System Architecture](#-system-architecture)
-4. [Tech Stack](#️-tech-stack)
-5. [Project Structure](#-project-structure)
-6. [Key Features](#-key-features)
-7. [Installation & Launch](#️-installation--launch)
-8. [Environment](#-environment)
-9. [Testing Suite](#-testing-suite)
-10. [CI Pipeline](#-ci-pipeline)
-11. [Documentation](#-documentation)
-12. [Non-goals](#-non-goals)
-13. [License](#-license)
+2. [Share this project](#-share-this-project)
+3. [What this repo now includes](#-what-this-repo-now-includes)
+4. [System Architecture](#-system-architecture)
+5. [Tech Stack](#️-tech-stack)
+6. [Project Structure](#-project-structure)
+7. [Key Features](#-key-features)
+8. [Installation & Launch](#️-installation--launch)
+9. [Environment](#-environment)
+10. [Testing Suite](#-testing-suite)
+11. [CI Pipeline](#-ci-pipeline)
+12. [Documentation](#-documentation)
+13. [Non-goals](#-non-goals)
+14. [License](#-license)
 
 ---
 
@@ -72,6 +73,63 @@ See also: [STATUS.md](STATUS.md) (one-page examiner sheet).
 Upload PDFs or TXT files per profile. Sample documents ship under `data/documents/_samples/` — copy them into `data/documents/{your_name}/` then rebuild the index (see `_samples/README.md`).
 
 The 2026-08-13 remediation (`HOW_TO_FIX.md` §1–§13) is **complete**: docs match the code, CI matches Docker (Python 3.12), user ids are validated, query routing is explicit JSON, graph vis is user-filtered, and observability logs structured query events without prompts or API keys.
+
+---
+
+## 📦 Share this project
+
+Anyone with Docker can run I.N.A.Y.A.T. **Python is not required on the host** if you use Compose.
+
+**Kubernetes is not part of this project.** Kubernetes orchestrates many containers across a cluster (Google/Netflix scale). This repo is one app plus three cloud APIs. **Docker Compose is the share path.** See [DOCKER.md](DOCKER.md).
+
+“Not hardened production” means optional auth and a shared Neo4j database — not “you cannot Docker it.” Native Streamlit on `:8501` and the Docker SPA on `:8000` are the **same agent**; Docker only packages it.
+
+### 1. Clone this branch
+
+```bash
+git clone -b august-inayat-v1-new-version-actual-running-to-github https://github.com/Inayat-0007/I.N.A.Y.A.T.-An-agentic-RAG-system-that-remembers-you-reads-your-documents-and-visualises..git
+cd I.N.A.Y.A.T.-An-agentic-RAG-system-that-remembers-you-reads-your-documents-and-visualises.
+```
+
+### 2. Copy env and add three API keys
+
+```bash
+# Windows
+copy .env.example .env
+
+# macOS / Linux
+cp .env.example .env
+```
+
+Edit `.env` (never commit it):
+
+| Key | Where to get it |
+| --- | ---------------- |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) (**required**) |
+| `MEM0_API_KEY` | [Mem0](https://app.mem0.ai/) (recommended) |
+| `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` | [Neo4j Aura](https://neo4j.com/cloud/aura/) (recommended) |
+
+Gemini, Mem0, and Aura stay **outside** Docker. Each person uses their own keys.
+
+### 3. Start the SPA
+
+```bash
+docker compose up --build
+```
+
+Open **http://localhost:8000**. Healthcheck: `GET /api/health`. Uploaded documents land in `./data` on your machine.
+
+Optional Streamlit UI (same backend):
+
+```bash
+docker compose --profile streamlit up --build
+```
+
+Open **http://localhost:8501**.
+
+### 4. User ids
+
+Workspace names must match `UserId.parse()`: letters, digits, `.` `_` `-` only. **Use underscores, not spaces** (`Moham_Khan`, not `Moham Khan`).
 
 ---
 
@@ -148,7 +206,8 @@ INAYAT/
 ├── activate.ps1                  # Windows launcher (sets INAYAT_DEMO_MODE)
 ├── requirements.txt
 ├── constraints.txt               # Pinned dependency versions
-├── .env.example
+├── .env.example                  # Copy to .env (never commit secrets)
+├── DOCKER.md                     # Compose share path; why k8s is not used
 ├── LICENSE                       # MIT
 ├── STATUS.md                     # One-page examiner status
 ├── CONTEXT.md                    # Contributor module map
@@ -183,7 +242,8 @@ INAYAT/
 │   └── integration.yml           # Weekly / manual live tests
 ├── Dockerfile                    # Streamlit :8501
 ├── Dockerfile.spa                # Multi-stage Vite + uvicorn :8000
-└── docker-compose.yml            # Default SPA; --profile streamlit
+├── .dockerignore
+└── docker-compose.yml            # Default SPA :8000; --profile streamlit :8501
 ```
 
 ---
@@ -207,7 +267,7 @@ INAYAT/
 
 ## 🛠️ Installation & Launch
 
-Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required). Workspace ids must match `UserId` rules (underscores, not spaces).
+Prefer **[Share this project](#-share-this-project)** if you only want to run the app. Copy `.env.example` → `.env` and set `GEMINI_API_KEY` (required). Workspace ids must match `UserId` rules (underscores, not spaces).
 
 ### Option A: Native Windows (Streamlit demo)
 
@@ -223,21 +283,21 @@ Copy samples into your profile folder first:
 Copy-Item -Recurse "data\documents\_samples\*" "data\documents\YourName\"
 ```
 
-### Option B: Docker (default = SPA on :8000)
+### Option B: Docker Compose (default = SPA on :8000)
+
+Same commands as [Share this project](#-share-this-project). Full notes: [DOCKER.md](DOCKER.md).
 
 ```bash
 docker compose up --build
 ```
 
-Serves FastAPI + built React at `http://localhost:8000`. Healthcheck: `GET /api/health`. Volume: `./data`.
+Serves FastAPI + built React at `http://localhost:8000`. Healthcheck: `GET /api/health`. Volume: `./data`. No Kubernetes.
 
-Streamlit:
+Streamlit profile (functionally the same agent as native `:8501`):
 
 ```bash
 docker compose --profile streamlit up --build
 ```
-
-Binds `8501`. Images: `Dockerfile.spa` (multi-stage `npm ci && npm run build`) and `Dockerfile` (Streamlit).
 
 Optional `INAYAT_API_KEY` gates mutating `/api/*` routes via `X-INAYAT-KEY`.
 
@@ -312,6 +372,7 @@ Python **3.12**, installs with `pip install -r requirements.txt -c constraints.t
 | File                                                       | Role                                               |
 | ---------------------------------------------------------- | -------------------------------------------------- |
 | [README.md](README.md)                                     | This file — install, architecture, canonical facts |
+| [DOCKER.md](DOCKER.md)                                     | Compose share path; Kubernetes is not required     |
 | [STATUS.md](STATUS.md)                                     | One-page examiner sheet + completed §10 order      |
 | [CONTEXT.md](CONTEXT.md)                                   | Contributor module map                             |
 | [WHAT_TO_FIX.md](WHAT_TO_FIX.md)                           | Issue inventory (superseded for counts)            |
@@ -323,7 +384,7 @@ Python **3.12**, installs with `pip install -r requirements.txt -c constraints.t
 
 ## 🚫 Non-goals
 
-Not in this product: LangGraph/CrewAI multi-agent orchestration, per-user Neo4j Aura instances, replacing Mem0 or Neo4j, rewriting Streamlit into React in one commit, or calling optional `INAYAT_API_KEY` “production hardening.”
+Not in this product: Kubernetes/cluster manifests, LangGraph/CrewAI multi-agent orchestration, per-user Neo4j Aura instances, replacing Mem0 or Neo4j, rewriting Streamlit into React in one commit, or calling optional `INAYAT_API_KEY` “production hardening.” Sharing is **Docker Compose**, not k8s.
 
 ---
 
